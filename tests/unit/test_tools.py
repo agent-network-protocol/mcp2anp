@@ -80,6 +80,7 @@ class TestFetchDocTool:
 
         assert result["ok"] is True
         assert result["contentType"] == "application/json"
+        assert result["encoding"] == "utf-8"
         assert result["json"]["protocolType"] == "ANP"
         assert len(result["links"]) > 0
 

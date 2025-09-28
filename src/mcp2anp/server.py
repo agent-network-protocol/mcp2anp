@@ -1,15 +1,14 @@
 """MCP server implementation for ANP bridge."""
 
 import asyncio
-import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import click
 import structlog
 
-from .mcp_types import MockMCPServer as Server, Tool
-
 from .auth import SessionManager
+from .mcp_types import MockMCPServer as Server
+from .mcp_types import Tool
 from .tools import FetchDocTool, InvokeOpenRPCTool, SetAuthTool
 from .utils import setup_logging
 
@@ -41,7 +40,7 @@ class MCPServer:
         ]
 
         @self.server.list_tools()
-        async def list_tools() -> List[Tool]:
+        async def list_tools() -> list[Tool]:
             """List available tools."""
             return tools
 
@@ -49,7 +48,7 @@ class MCPServer:
         """Register tool handlers."""
 
         @self.server.call_tool()
-        async def call_tool(name: str, arguments: Dict[str, Any]) -> Any:
+        async def call_tool(name: str, arguments: dict[str, Any]) -> Any:
             """Handle tool calls."""
             logger.info("Tool called", tool_name=name, args=arguments)
 

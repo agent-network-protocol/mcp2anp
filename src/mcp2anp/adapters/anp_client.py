@@ -1,8 +1,11 @@
 """HTTP client for ANP interactions."""
 
+from __future__ import annotations
+
+import base64
 import json
-from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urljoin, urlparse
+from typing import Any, Dict, List
+from urllib.parse import urljoin
 
 import httpx
 import structlog
@@ -27,7 +30,7 @@ class ANPClient(LoggerMixin):
     async def fetch_document(
         self,
         url: str,
-        headers: Optional[Dict[str, str]] = None,
+        headers: Dict[str, str] | None = None,
     ) -> models.FetchDocResponse:
         """Fetch and parse an ANP document.
 
@@ -48,14 +51,24 @@ class ANPClient(LoggerMixin):
                 response = await client.get(url, headers=headers or {})
                 response.raise_for_status()
 
-                content_type = response.headers.get("content-type", "text/plain")
-                text_content = response.text
+                content_type = response.headers.get("content-type", "application/octet-stream")
+                raw_bytes = response.content
+                detected_encoding = response.encoding or "utf-8"
+                is_textual = self._is_textual_content(content_type)
+
+                if is_textual:
+                    text_content = raw_bytes.decode(detected_encoding, errors="replace")
+                    content_encoding = detected_encoding
+                else:
+                    text_content = base64.b64encode(raw_bytes).decode("ascii")
+                    content_encoding = "base64"
 
                 self.log_operation(
                     "Document fetched successfully",
                     url=url,
                     content_type=content_type,
-                    content_length=len(text_content),
+                    content_length=len(raw_bytes),
+                    encoding=content_encoding,
                 )
 
                 # Parse JSON if applicable
@@ -63,12 +76,12 @@ class ANPClient(LoggerMixin):
                 if "json" in content_type.lower():
                     try:
                         json_content = response.json()
-                    except json.JSONDecodeError as e:
+                    except json.JSONDecodeError as error:
                         self.log_operation(
                             "Failed to parse JSON content",
                             level="warning",
                             url=url,
-                            error=str(e),
+                            error=str(error),
                         )
 
                 # Extract links
@@ -77,6 +90,7 @@ class ANPClient(LoggerMixin):
                 return models.FetchDocResponse(
                     ok=True,
                     content_type=content_type,
+                    encoding=content_encoding,
                     text=text_content,
                     json=json_content,
                     links=links,
@@ -130,7 +144,7 @@ class ANPClient(LoggerMixin):
 
     def _extract_links(
         self,
-        json_content: Optional[Dict[str, Any]],
+        json_content: Dict[str, Any] | None,
         base_url: str,
     ) -> List[Dict[str, str]]:
         """Extract followable links from ANP JSON content.
@@ -145,7 +159,7 @@ class ANPClient(LoggerMixin):
         if not json_content:
             return []
 
-        links = []
+        links: List[Dict[str, str]] = []
 
         try:
             # Extract from interfaces array
@@ -218,3 +232,16 @@ class ANPClient(LoggerMixin):
         if url.startswith(("http://", "https://")):
             return url
         return urljoin(base_url, url)
+
+    @staticmethod
+    def _is_textual_content(content_type: str) -> bool:
+        """Determine whether the given content type should be treated as text."""
+
+        lowered = content_type.lower()
+        if lowered.startswith("text/"):
+            return True
+
+        for token in ("json", "yaml", "xml", "+json", "+yaml"):
+            if token in lowered:
+                return True
+        return False

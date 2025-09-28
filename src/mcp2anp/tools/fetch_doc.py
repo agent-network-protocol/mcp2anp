@@ -1,13 +1,12 @@
 """FetchDoc tool implementation for MCP2ANP."""
 
-from typing import Any, Dict
+from typing import Any
 
 import structlog
 
-from ..mcp_types import Tool
-
 from ..adapters import ANPClient
 from ..auth import SessionManager
+from ..mcp_types import Tool
 from ..utils import LoggerMixin, models
 
 logger = structlog.get_logger(__name__)
@@ -52,7 +51,7 @@ class FetchDocTool(LoggerMixin):
             },
         )
 
-    async def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute the fetchDoc tool.
 
         Args:
@@ -71,7 +70,9 @@ class FetchDocTool(LoggerMixin):
             )
 
             # Get authentication headers if available
-            auth_headers = self.session_manager.get_auth_headers()
+            auth_headers = self.session_manager.get_auth_headers(
+                target_url=request.url,
+            )
 
             # Fetch the document
             response = await self.anp_client.fetch_document(
@@ -87,7 +88,7 @@ class FetchDocTool(LoggerMixin):
             )
 
             # Convert response to dict for MCP compatibility
-            return response.model_dump(exclude_none=True)
+            return response.model_dump(by_alias=True, exclude_none=True)
 
         except Exception as e:
             self.log_operation(

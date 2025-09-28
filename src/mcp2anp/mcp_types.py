@@ -1,6 +1,6 @@
 """Simple MCP types implementation for testing purposes."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -10,13 +10,13 @@ class Tool(BaseModel):
 
     name: str
     description: str
-    inputSchema: Dict[str, Any]
+    inputSchema: dict[str, Any]
 
 
 class InitializationOptions(BaseModel):
     """MCP initialization options."""
 
-    capabilities: Dict[str, Any] = {}
+    capabilities: dict[str, Any] = {}
 
 
 class MockMCPServer:
@@ -24,8 +24,8 @@ class MockMCPServer:
 
     def __init__(self, name: str) -> None:
         self.name = name
-        self._tools: List[Tool] = []
-        self._tool_handlers: Dict[str, Any] = {}
+        self._tools: list[Tool] = []
+        self._tool_handlers: dict[str, Any] = {}
         self._list_tools_handler = None
 
     def list_tools(self):

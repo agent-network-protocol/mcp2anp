@@ -1,12 +1,11 @@
 """SetAuth tool implementation for MCP2ANP."""
 
-from typing import Any, Dict
+from typing import Any
 
 import structlog
 
-from ..mcp_types import Tool
-
 from ..auth import DIDAuth, SessionManager
+from ..mcp_types import Tool
 from ..utils import LoggerMixin, models
 
 logger = structlog.get_logger(__name__)
@@ -54,7 +53,7 @@ class SetAuthTool(LoggerMixin):
             },
         )
 
-    async def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute the setAuth tool.
 
         Args:
@@ -103,6 +102,8 @@ class SetAuthTool(LoggerMixin):
             success = await self.session_manager.set_auth_context(
                 request.did_document_path,
                 request.did_private_key_path,
+                did_document=did_document,
+                private_key_pem=private_key,
             )
 
             if success:

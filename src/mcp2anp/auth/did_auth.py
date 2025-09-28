@@ -1,8 +1,11 @@
 """DID-based authentication for ANP integration."""
 
+from __future__ import annotations
+
+import base64
 import json
+import time
 from pathlib import Path
-from typing import Dict, Optional
 
 import structlog
 from cryptography.hazmat.primitives import hashes, serialization
@@ -20,7 +23,7 @@ class DIDAuth(LoggerMixin):
         """Initialize the DID authentication handler."""
         super().__init__()
 
-    async def load_did_document(self, did_document_path: str) -> Optional[Dict]:
+    async def load_did_document(self, did_document_path: str) -> dict | None:
         """Load and parse a DID document.
 
         Args:
@@ -39,7 +42,7 @@ class DIDAuth(LoggerMixin):
                 )
                 return None
 
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 did_doc = json.load(f)
 
             self.log_operation(
@@ -57,7 +60,7 @@ class DIDAuth(LoggerMixin):
             )
             return None
 
-    async def load_private_key(self, private_key_path: str) -> Optional[str]:
+    async def load_private_key(self, private_key_path: str) -> str | None:
         """Load a private key from file.
 
         Args:
@@ -109,12 +112,12 @@ class DIDAuth(LoggerMixin):
             )
             return None
 
-    async def generate_auth_token(
+    def generate_auth_token(
         self,
-        did_document: Dict,
+        did_document: dict,
         private_key: str,
         target_url: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Generate an authentication token for a request.
 
         Args:
@@ -126,29 +129,50 @@ class DIDAuth(LoggerMixin):
             Authentication token or None if generation failed
         """
         try:
-            # This is a simplified implementation
-            # In a real implementation, this would generate a proper
-            # DIDWBA (DID Web-Based Authentication) token
-
-            did_id = did_document.get("id", "unknown")
+            did_id = did_document.get("id", "")
             self.log_operation(
                 "Generating auth token",
-                did_id=did_id,
+                did_id=did_id or "unknown",
                 target_url=target_url,
             )
 
-            # For MVP, return a placeholder token
-            # Real implementation would involve:
-            # 1. Creating a JWT with appropriate claims
-            # 2. Signing with the private key
-            # 3. Including DID verification information
+            # Prepare JWT-style header and payload
+            header = {"alg": "RS256", "typ": "DIDWBA"}
+            issued_at = int(time.time())
+            payload = {
+                "iss": did_id,
+                "sub": did_id,
+                "aud": target_url,
+                "iat": issued_at,
+                "exp": issued_at + 300,
+            }
 
-            token = f"did-auth-{did_id}-{hash(target_url) % 10000}"
+            header_segment = self._b64url(
+                json.dumps(header, separators=(",", ":")).encode("utf-8")
+            )
+            payload_segment = self._b64url(
+                json.dumps(payload, separators=(",", ":")).encode("utf-8")
+            )
+            signing_input = f"{header_segment}.{payload_segment}".encode()
+
+            private_key_obj = serialization.load_pem_private_key(
+                private_key.encode("utf-8"),
+                password=None,
+            )
+
+            signature = private_key_obj.sign(
+                signing_input,
+                padding.PKCS1v15(),
+                hashes.SHA256(),
+            )
+            signature_segment = self._b64url(signature)
+
+            token = f"{header_segment}.{payload_segment}.{signature_segment}"
 
             self.log_operation(
                 "Auth token generated",
-                did_id=did_id,
-                token_prefix=token[:20] + "...",
+                did_id=did_id or "unknown",
+                token_prefix=token[:24] + "...",
             )
 
             return token
@@ -160,3 +184,9 @@ class DIDAuth(LoggerMixin):
                 error=str(e),
             )
             return None
+
+    @staticmethod
+    def _b64url(data: bytes) -> str:
+        """Return URL-safe base64 string without padding."""
+
+        return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")

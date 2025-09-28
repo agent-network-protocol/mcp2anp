@@ -1,13 +1,12 @@
 """InvokeOpenRPC tool implementation for MCP2ANP."""
 
-from typing import Any, Dict
+from typing import Any
 
 import structlog
 
-from ..mcp_types import Tool
-
 from ..adapters import OpenRPCAdapter
 from ..auth import SessionManager
+from ..mcp_types import Tool
 from ..utils import LoggerMixin, models
 
 logger = structlog.get_logger(__name__)
@@ -65,7 +64,7 @@ class InvokeOpenRPCTool(LoggerMixin):
             },
         )
 
-    async def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute the invokeOpenRPC tool.
 
         Args:
@@ -86,7 +85,9 @@ class InvokeOpenRPCTool(LoggerMixin):
             )
 
             # Get authentication headers if available
-            auth_headers = self.session_manager.get_auth_headers()
+            auth_headers = self.session_manager.get_auth_headers(
+                target_url=request.endpoint,
+            )
 
             # Invoke the OpenRPC method
             response = await self.openrpc_adapter.invoke_method(
@@ -106,7 +107,7 @@ class InvokeOpenRPCTool(LoggerMixin):
             )
 
             # Convert response to dict for MCP compatibility
-            return response.model_dump(exclude_none=True)
+            return response.model_dump(by_alias=True, exclude_none=True)
 
         except Exception as e:
             self.log_operation(

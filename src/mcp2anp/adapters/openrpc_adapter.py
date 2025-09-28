@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 import structlog
@@ -28,9 +28,9 @@ class OpenRPCAdapter(LoggerMixin):
         self,
         endpoint: str,
         method: str,
-        params: Dict[str, Any],
-        headers: Optional[Dict[str, str]] = None,
-        request_id: Optional[str] = None,
+        params: dict[str, Any],
+        headers: dict[str, str] | None = None,
+        request_id: str | None = None,
     ) -> models.InvokeOpenRPCResponse:
         """Invoke an OpenRPC method.
 

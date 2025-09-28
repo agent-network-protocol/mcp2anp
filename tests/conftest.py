@@ -3,7 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -14,7 +14,7 @@ from mcp2anp.tools import FetchDocTool, InvokeOpenRPCTool, SetAuthTool
 
 
 @pytest.fixture
-def sample_did_document() -> Dict[str, Any]:
+def sample_did_document() -> dict[str, Any]:
     """Sample DID document for testing."""
     return {
         "id": "did:example:123456789abcdefghi",
@@ -96,7 +96,7 @@ def invoke_openrpc_tool(session_manager):
 
 
 @pytest.fixture
-def sample_anp_document() -> Dict[str, Any]:
+def sample_anp_document() -> dict[str, Any]:
     """Sample ANP agent description document."""
     return {
         "protocolType": "ANP",
@@ -120,7 +120,7 @@ def sample_anp_document() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def sample_openrpc_response() -> Dict[str, Any]:
+def sample_openrpc_response() -> dict[str, Any]:
     """Sample OpenRPC success response."""
     return {
         "jsonrpc": "2.0",

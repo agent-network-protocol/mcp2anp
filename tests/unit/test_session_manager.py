@@ -15,13 +15,15 @@ class TestSessionManager:
         assert manager._default_session == "default"
 
     @pytest.mark.asyncio
-    async def test_set_auth_context_success(self):
+    async def test_set_auth_context_success(self, sample_did_document, sample_private_key):
         """Test successful authentication context setting."""
         manager = SessionManager()
 
         result = await manager.set_auth_context(
             "test-did-doc.json",
-            "test-private-key.pem"
+            "test-private-key.pem",
+            did_document=sample_did_document,
+            private_key_pem=sample_private_key,
         )
 
         assert result is True
@@ -30,17 +32,20 @@ class TestSessionManager:
         context = manager.get_auth_context()
         assert context["did_document_path"] == "test-did-doc.json"
         assert context["did_private_key_path"] == "test-private-key.pem"
+        assert context["did_document"]["id"] == sample_did_document["id"]
         assert context["authenticated"] is True
 
     @pytest.mark.asyncio
-    async def test_set_auth_context_with_session_id(self):
+    async def test_set_auth_context_with_session_id(self, sample_did_document, sample_private_key):
         """Test setting auth context with specific session ID."""
         manager = SessionManager()
 
         result = await manager.set_auth_context(
             "test-did-doc.json",
             "test-private-key.pem",
-            session_id="custom-session"
+            did_document=sample_did_document,
+            private_key_pem=sample_private_key,
+            session_id="custom-session",
         )
 
         assert result is True
@@ -77,15 +82,18 @@ class TestSessionManager:
         headers = manager.get_auth_headers()
         assert headers == {}
 
-    def test_get_auth_headers_with_auth(self):
+    @pytest.mark.asyncio
+    async def test_get_auth_headers_with_auth(self, sample_did_document, sample_private_key):
         """Test getting auth headers when authenticated."""
         manager = SessionManager()
-        manager._sessions["default"] = {
-            "did_document_path": "test.json",
-            "did_private_key_path": "test.pem",
-            "authenticated": True
-        }
+        await manager.set_auth_context(
+            "test.json",
+            "test.pem",
+            did_document=sample_did_document,
+            private_key_pem=sample_private_key,
+        )
 
-        headers = manager.get_auth_headers()
-        assert "X-DID-Auth" in headers
-        assert "User-Agent" in headers
+        headers = manager.get_auth_headers(target_url="https://example.org/resource")
+        assert headers["User-Agent"].startswith("mcp2anp/")
+        assert headers["Authorization"].startswith("DIDWBA ")
+        assert headers["X-DID-Subject"] == sample_did_document["id"]
