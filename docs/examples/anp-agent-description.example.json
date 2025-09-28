@@ -1,0 +1,40 @@
+{
+  "protocolType": "ANP",
+  "name": "Grand Hotel Booking Agent",
+  "description": "AI agent for hotel room booking and customer service",
+  "version": "1.2.0",
+  "interfaces": [
+    {
+      "protocol": "openrpc",
+      "url": "https://grand-hotel.com/api/booking-interface.json",
+      "title": "Booking Interface",
+      "description": "Primary booking operations including search, reserve, and confirm"
+    },
+    {
+      "protocol": "yaml-structured",
+      "url": "https://grand-hotel.com/api/customer-service.yaml",
+      "title": "Customer Service Interface",
+      "description": "Customer support operations"
+    }
+  ],
+  "informations": [
+    {
+      "url": "https://grand-hotel.com/info/amenities.json",
+      "title": "Hotel Amenities",
+      "description": "Available facilities and services"
+    },
+    {
+      "url": "https://grand-hotel.com/info/policies.json",
+      "title": "Hotel Policies",
+      "description": "Cancellation, check-in/out, and other policies"
+    }
+  ],
+  "metadata": {
+    "contact": {
+      "name": "Grand Hotel API Team",
+      "email": "api@grand-hotel.com"
+    },
+    "documentation": "https://grand-hotel.com/docs/api",
+    "termsOfService": "https://grand-hotel.com/terms"
+  }
+}

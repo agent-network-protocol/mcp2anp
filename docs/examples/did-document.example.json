@@ -1,0 +1,21 @@
+{
+  "id": "did:example:123456789abcdefghi",
+  "verificationMethod": [
+    {
+      "id": "did:example:123456789abcdefghi#keys-1",
+      "type": "RsaVerificationKey2018",
+      "controller": "did:example:123456789abcdefghi",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...\n-----END PUBLIC KEY-----"
+    }
+  ],
+  "authentication": [
+    "did:example:123456789abcdefghi#keys-1"
+  ],
+  "service": [
+    {
+      "id": "did:example:123456789abcdefghi#agent-service",
+      "type": "ANPAgent",
+      "serviceEndpoint": "https://example.com/agent"
+    }
+  ]
+}
