@@ -1,13 +1,14 @@
 """MCP server implementation for ANP bridge."""
 
 import asyncio
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import click
+import mcp.server.stdio
 import structlog
 from mcp.server import Server
-from mcp.types import Tool, TextContent, CallToolRequest, CallToolResult
-import mcp.server.stdio
+from mcp.types import TextContent, Tool
 
 from .auth import SessionManager
 from .tools import FetchDocTool, InvokeOpenRPCTool, SetAuthTool

@@ -145,7 +145,7 @@ uv run mcp2anp --log-level INFO
 
 ```
 mcp2anp/
-├── src/mcp2anp/          # 源代码
+├── mcp2anp/             # 源代码
 │   ├── server.py         # 主服务器
 │   ├── tools/            # MCP 工具实现
 │   ├── adapters/         # 协议适配器
@@ -183,20 +183,20 @@ uv run pytest
 uv run pytest tests/unit/test_tools.py -v
 
 # 运行测试并生成覆盖率报告
-uv run pytest --cov=src/mcp2anp --cov-report=html
+uv run pytest --cov=mcp2anp --cov-report=html
 ```
 
 ### 代码质量
 
 ```bash
 # 格式化代码
-uv run black src/ tests/
+uv run black mcp2anp/ tests/
 
 # 代码检查
-uv run ruff src/ tests/
+uv run ruff mcp2anp/ tests/
 
 # 类型检查
-uv run mypy src/
+uv run mypy mcp2anp/
 ```
 
 ## 使用示例
@@ -279,7 +279,7 @@ booking = await invoke_openrpc_tool.execute({
 
 - 使用 Google Python 编码规范
 - 确保所有测试通过: `uv run pytest`
-- 运行代码检查: `uv run ruff src/ tests/`
+- 运行代码检查: `uv run ruff mcp2anp/ tests/`
 - 保持 ≥90% 测试覆盖率
 
 ## 许可证

@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `anp.invokeOpenRPC`: 调用 OpenRPC 端点（JSON-RPC 2.0）
 
 项目结构规划：
-- `src/mcp2anp/`: 运行时代码，包含适配器、工具处理器和共享工具
+- `mcp2anp/`: 运行时代码，包含适配器、工具处理器和共享工具
 - `tests/`: 测试代码，使用 pytest
 - `docs/`: 架构文档
 - `assets/`: 图表和示例资源

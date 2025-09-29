@@ -60,8 +60,6 @@ case $choice in
         echo "🏃 运行快速测试..."
         uv run python -c "
 import asyncio
-import sys
-sys.path.insert(0, 'src')
 from mcp2anp.server import list_tools
 
 async def quick_test():
@@ -95,8 +93,6 @@ asyncio.run(quick_test())
         echo "--- 快速测试 ---"
         uv run python -c "
 import asyncio
-import sys
-sys.path.insert(0, 'src')
 from mcp2anp.server import list_tools
 
 async def quick_test():

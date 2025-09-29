@@ -61,7 +61,7 @@ Repository = "https://github.com/example/mcp2anp"
 Issues = "https://github.com/example/mcp2anp/issues"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
 include = ["mcp2anp*"]
 
 [tool.pytest.ini_options]
@@ -70,7 +70,7 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = [
-    "--cov=src/mcp2anp",
+    "--cov=mcp2anp",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--strict-markers",
@@ -147,7 +147,7 @@ module = [
 ignore_missing_imports = true
 
 [tool.coverage.run]
-source = ["src"]
+source = ["mcp2anp"]
 omit = [
     "*/tests/*",
     "*/test_*",

@@ -261,6 +261,5 @@ uv run python -m mcp2anp.server --log-level DEBUG
 
 - DID 身份鉴权：参考 `examples/did-auth/` 目录
 - 数据爬取：参考 `examples/fetch-data/` 目录
-- 工具实现：查看 `src/mcp2anp/tools/` 目录
-
+- 工具实现：查看 `mcp2anp/tools/` 目录
 

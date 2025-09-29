@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Source code lives under `src/mcp2anp/`, arranged into `adapters/`, `tools/`, and `common/`; keep new runtime modules aligned with these boundaries.
+- Source code lives under `mcp2anp/`, arranged into `adapters/`, `tools/`, and `common/`; keep new runtime modules aligned with these boundaries.
 - Tests mirror the runtime tree in `tests/` and share fixtures in `tests/fixtures/`; reuse JSON-RPC payloads stored there instead of duplicating literals.
 - Store documentation and protocol notes in `docs/` (notably `docs/spec.md`), while diagrams, traces, and reference transcripts belong in `assets/`.
 - Example client scripts reside in `examples/`; keep them minimal and cross-reference stable entry points such as `mcp2anp.server`.
