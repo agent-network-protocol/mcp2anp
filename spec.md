@@ -1,13 +1,13 @@
 ````markdown
-# ANP Bridge for MCP —— 网站方案（提案版）
+# ANP Bridge for MCP —— 实现文档
 
-> 让任何支持 **MCP** 的应用，像“本地工具”一样访问 **ANP** 智能体  
-> （MVP：仅用两个工具——**爬取文档** + **调用接口**，先支持 **OpenRPC**，后续扩展 YAML/MCP/WebRTC）
+> 让任何支持 **MCP** 的应用，像"本地工具"一样访问 **ANP** 智能体
+> 基于 **FastMCP** 构建真正的 MCP 服务器，提供三个核心工具：**设置认证**、**爬取文档** + **调用接口**
 
 ---
 
 ## 0. 一句话
-**MCP→ANP 适配层**：把 ANP “从入口文档出发、逐步跟进并调用结构化接口”的交互范式，封装为一组 MCP Tools，令 Claude/Cursor/IDE 等 MCP 客户端无需改造即可访问 ANP 智能体。
+**MCP→ANP 适配层**：使用 **FastMCP** 构建真正的 MCP 服务器，把 ANP "从入口文档出发、逐步跟进并调用结构化接口"的交互范式，封装为一组 MCP Tools，令 Claude Desktop、Cursor、IDE 等 MCP 客户端可以通过标准 MCP 协议连接访问 ANP 智能体。
 
 ---
 
@@ -28,12 +28,18 @@
 ---
 
 ## 3. 方案（Solution）
-**只用 MCP tools** 实现 MVP：  
-- `anp.fetchDoc`：**唯一**允许的 URL 访问入口（抓取/解析 ANP 文档，抽取可跟进链接）  
-- `anp.invokeOpenRPC`：对 **OpenRPC** 端点发起方法调用（统一错误模型与返回结构）  
-- （可选）`anp.setAuth`：把 DIDWBA 等授权上下文写入服务端会话，`fetchDoc/invoke` 自动注入头。 因为我们的mcp server是本地的server，所以，setAuth传入的是did文档以及对应的did私钥文件。
+**基于 FastMCP 构建真正的 MCP 服务器**，提供三个核心工具：
+- `anp.setAuth`：设置 DID 认证上下文（使用本地 DID 文档和私钥文件）
+- `anp.fetchDoc`：**唯一**允许的 URL 访问入口（抓取/解析 ANP 文档，抽取可跟进链接）
+- `anp.invokeOpenRPC`：对 **OpenRPC** 端点发起方法调用（统一错误模型与返回结构）
 
-> 搭配系统提示词：**“任何 fetchDoc返回文档中的URL 必须使用 `anp.fetchDoc` 拉取；如需执行操作，优先选择结构化接口（OpenRPC/YAML）；若接口要求人工授权，先征得用户确认并回填证据。”**
+**技术架构**：
+- 使用标准 `mcp` 库创建 MCP 服务器
+- 通过 `@server.list_tools()` 和 `@server.call_tool()` 装饰器实现工具
+- 支持 stdio 传输协议，可以被任何 MCP 客户端连接
+- 集成 `agent-connect` 库处理 ANP 协议交互
+
+> 搭配系统提示词：**"任何 fetchDoc返回文档中的URL 必须使用 `anp.fetchDoc` 拉取；如需执行操作，优先选择结构化接口（OpenRPC/YAML）；若接口要求人工授权，先征得用户确认并回填证据。"**
 
 ---
 
@@ -41,27 +47,31 @@
 
 ```mermaid
 flowchart LR
-    subgraph MCP Client
-      U[LLM / 前端] -->|call tool| T1[anp.fetchDoc]
-      U -->|call tool| T2[anp.invokeOpenRPC]
-      U -->|optional| T0[anp.setAuth]
+    subgraph MCP Client Application
+      U[Claude Desktop/Cursor/IDE] -->|MCP Protocol| MCPClient[MCP Client]
     end
 
-    subgraph ANP Bridge (MCP Server)
-      T1 --> P1[解析/抽链/缓存]
-      T2 --> A1[OpenRPC 适配器]
-      T0 --> S1[会话级授权上下文]
-      P1 --> S1
-      A1 --> S1
+    subgraph MCP2ANP Server
+      MCPClient -->|stdio transport| MCPServer[MCP Server]
+      MCPServer -->|@server.call_tool| T0[anp.setAuth]
+      MCPServer -->|@server.call_tool| T1[anp.fetchDoc]
+      MCPServer -->|@server.call_tool| T2[anp.invokeOpenRPC]
+
+      T0 --> SessionMgr[Session Manager]
+      T1 --> ANPClient[ANP Client]
+      T2 --> OpenRPCAdapter[OpenRPC Adapter]
+
+      SessionMgr --> DIDAuth[DID Authentication]
+      ANPClient --> SessionMgr
+      OpenRPCAdapter --> SessionMgr
     end
 
-    subgraph ANP Side
-      D1[AgentDescription] -.-> D2[Informations]
-      D1 -.-> D3[Interfaces(OpenRPC/YAML/...)]
-      A1 -->|JSON-RPC| E1[OpenRPC Endpoint]
-      P1 -->|HTTP GET| D1
-      P1 -->|HTTP GET| D2
-      P1 -->|HTTP GET| D3
+    subgraph ANP Ecosystem
+      ANPClient -->|HTTP GET + Auth| AgentDesc[Agent Description]
+      ANPClient -->|HTTP GET + Auth| InfoDocs[Information Documents]
+      ANPClient -->|HTTP GET + Auth| InterfaceDocs[Interface Documents]
+
+      OpenRPCAdapter -->|JSON-RPC 2.0 + Auth| OpenRPCEndpoint[OpenRPC Endpoint]
     end
 ````
 
@@ -71,26 +81,37 @@ flowchart LR
 
 ```mermaid
 sequenceDiagram
-  participant Client as MCP Client (Claude/Cursor)
-  participant Bridge as ANP Bridge (MCP Server)
-  participant Agent as ANP Agent (Hotel)
+  participant App as Claude Desktop/Cursor
+  participant MCP as MCP Server
+  participant Session as Session Manager
+  participant ANP as ANP Agent (Hotel)
 
-  Client->>Bridge: anp.setAuth(did, token)  (可选)
-  Client->>Bridge: anp.fetchDoc(ad.json)
-  Bridge->>Agent: GET ad.json (+Authorization)
-  Agent-->>Bridge: AgentDescription
-  Bridge-->>Client: 文档+可跟进链接(interfaces, informations)
+  App->>MCP: 连接到 MCP 服务器 (stdio)
+  MCP-->>App: 返回可用工具列表 (list_tools)
 
-  Client->>Bridge: anp.fetchDoc(booking-interface.json)
-  Bridge->>Agent: GET booking-interface.json
-  Agent-->>Bridge: OpenRPC schema
-  Bridge-->>Client: 解析后的接口描述(方法列表)
+  App->>MCP: anp.setAuth(didDocumentPath, didPrivateKeyPath)
+  MCP->>Session: 加载 DID 文档和私钥
+  Session->>Session: 验证 DID 身份
+  Session-->>MCP: 设置认证上下文
+  MCP-->>App: {ok: true}
 
+  App->>MCP: anp.fetchDoc(agent-description-url)
+  MCP->>Session: 获取认证头
+  MCP->>ANP: HTTP GET + Authorization header
+  ANP-->>MCP: AgentDescription JSON
+  MCP->>MCP: 解析文档，提取链接
+  MCP-->>App: {ok:true, json:{...}, links:[...]}
 
-  Client->>Bridge: anp.invokeOpenRPC(endpoint, method, params, evidence)
-  Bridge->>Agent: POST JSON-RPC {method, params}
-  Agent-->>Bridge: {result}
-  Bridge-->>Client: {ok:true, result}
+  App->>MCP: anp.fetchDoc(openrpc-interface-url)
+  MCP->>ANP: HTTP GET + Authorization header
+  ANP-->>MCP: OpenRPC Schema
+  MCP-->>App: {ok:true, json:{...}, links:[...]}
+
+  App->>MCP: anp.invokeOpenRPC(endpoint, confirmBooking, params)
+  MCP->>Session: 获取认证头
+  MCP->>ANP: JSON-RPC POST + Authorization header
+  ANP-->>MCP: JSON-RPC Response
+  MCP-->>App: {ok:true, result:{bookingId:...}}
 ```
 
 ---
@@ -195,12 +216,51 @@ sequenceDiagram
 > * 当接口声明 `humanAuthorization: true` 时，先征得用户确认，并把回执写入 `humanAuthorizationEvidence`
 > * 控制爬取步数，仅跟进与当前意图相关的链接
 
-## 依赖
+## 依赖和运行
 
-依赖agent-connect 3.7版本。
+### 核心依赖
+- `mcp>=1.0.0` - 标准 MCP 服务器库
+- `agent-connect>=0.3.7` - 处理 ANP 协议交互
+- `pydantic>=2.5.0` - 数据验证和序列化
+- `httpx>=0.27.0` - HTTP 客户端
+- `cryptography>=41.0.0` - 加密和 DID 处理
 
-代码参考 examples下面的两个文件夹，一个用于处理did身份鉴权，一个爬取数据。
+### 运行方式
 
-上面的fetchDoc和invokeOpenRPC 参考examples中的代码实现。
+```bash
+# 安装依赖
+uv sync
+
+# 启动 MCP 服务器
+uv run python -m mcp2anp.server
+
+# 开发模式（热重载）
+uv run python -m mcp2anp.server --reload
+
+# 指定日志级别
+uv run python -m mcp2anp.server --log-level DEBUG
+```
+
+### MCP 客户端连接
+
+服务器使用 stdio 传输协议，可以被任何 MCP 客户端连接：
+
+```json
+{
+  "mcpServers": {
+    "mcp2anp": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "mcp2anp.server"],
+      "cwd": "/path/to/mcp2anp"
+    }
+  }
+}
+```
+
+### 代码参考
+
+- DID 身份鉴权：参考 `examples/did-auth/` 目录
+- 数据爬取：参考 `examples/fetch-data/` 目录
+- 工具实现：查看 `src/mcp2anp/tools/` 目录
 
 

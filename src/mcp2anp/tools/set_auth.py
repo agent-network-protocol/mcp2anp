@@ -5,7 +5,6 @@ from typing import Any
 import structlog
 
 from ..auth import DIDAuth, SessionManager
-from ..mcp_types import Tool
 from ..utils import LoggerMixin, models
 
 logger = structlog.get_logger(__name__)
@@ -24,34 +23,6 @@ class SetAuthTool(LoggerMixin):
         self.session_manager = session_manager
         self.did_auth = DIDAuth()
 
-    def get_tool_definition(self) -> Tool:
-        """Get the MCP tool definition.
-
-        Returns:
-            Tool definition for anp.setAuth
-        """
-        return Tool(
-            name="anp.setAuth",
-            description=(
-                "Set DID-based authentication context for ANP interactions. "
-                "This stores local DID credentials that will be used for "
-                "subsequent fetchDoc and invokeOpenRPC calls."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "didDocumentPath": {
-                        "type": "string",
-                        "description": "Path to the DID document JSON file",
-                    },
-                    "didPrivateKeyPath": {
-                        "type": "string",
-                        "description": "Path to the DID private key PEM file",
-                    },
-                },
-                "required": ["didDocumentPath", "didPrivateKeyPath"],
-            },
-        )
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute the setAuth tool.

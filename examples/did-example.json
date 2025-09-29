@@ -1,0 +1,30 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://w3id.org/security/suites/ed25519-2020/v1"
+  ],
+  "id": "did:example:test123456789",
+  "verificationMethod": [
+    {
+      "id": "did:example:test123456789#key-1",
+      "type": "Ed25519VerificationKey2020",
+      "controller": "did:example:test123456789",
+      "publicKeyMultibase": "z6MkrJVnaZkeFzdQyQSrSgykYbKjD8s8GdLZKSdV8kJ8jjK3"
+    }
+  ],
+  "authentication": [
+    "did:example:test123456789#key-1"
+  ],
+  "assertionMethod": [
+    "did:example:test123456789#key-1"
+  ],
+  "service": [
+    {
+      "id": "did:example:test123456789#agent-connect",
+      "type": "AgentConnect",
+      "serviceEndpoint": "https://example.com/agent-connect"
+    }
+  ],
+  "created": "2024-09-28T10:00:00Z",
+  "updated": "2024-09-28T10:00:00Z"
+}

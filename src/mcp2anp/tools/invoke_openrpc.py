@@ -6,7 +6,6 @@ import structlog
 
 from ..adapters import OpenRPCAdapter
 from ..auth import SessionManager
-from ..mcp_types import Tool
 from ..utils import LoggerMixin, models
 
 logger = structlog.get_logger(__name__)
@@ -25,44 +24,6 @@ class InvokeOpenRPCTool(LoggerMixin):
         self.session_manager = session_manager
         self.openrpc_adapter = OpenRPCAdapter()
 
-    def get_tool_definition(self) -> Tool:
-        """Get the MCP tool definition.
-
-        Returns:
-            Tool definition for anp.invokeOpenRPC
-        """
-        return Tool(
-            name="anp.invokeOpenRPC",
-            description=(
-                "Invoke methods on OpenRPC endpoints using JSON-RPC 2.0 protocol. "
-                "This tool handles structured interactions with ANP agents that "
-                "expose OpenRPC interfaces."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "endpoint": {
-                        "type": "string",
-                        "description": "OpenRPC endpoint URL",
-                        "format": "uri",
-                    },
-                    "method": {
-                        "type": "string",
-                        "description": "Name of the RPC method to invoke",
-                    },
-                    "params": {
-                        "type": "object",
-                        "description": "Parameters to pass to the method",
-                        "default": {},
-                    },
-                    "id": {
-                        "type": "string",
-                        "description": "Optional request ID for tracking",
-                    },
-                },
-                "required": ["endpoint", "method"],
-            },
-        )
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute the invokeOpenRPC tool.

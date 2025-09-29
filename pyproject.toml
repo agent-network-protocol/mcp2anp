@@ -30,6 +30,8 @@ dependencies = [
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
     "respx>=0.22.0",
+    "mcp>=1.0.0",
+    "agent-connect>=0.3.7",
 ]
 
 [dependency-groups]

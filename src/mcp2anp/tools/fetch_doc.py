@@ -6,7 +6,6 @@ import structlog
 
 from ..adapters import ANPClient
 from ..auth import SessionManager
-from ..mcp_types import Tool
 from ..utils import LoggerMixin, models
 
 logger = structlog.get_logger(__name__)
@@ -25,31 +24,6 @@ class FetchDocTool(LoggerMixin):
         self.session_manager = session_manager
         self.anp_client = ANPClient()
 
-    def get_tool_definition(self) -> Tool:
-        """Get the MCP tool definition.
-
-        Returns:
-            Tool definition for anp.fetchDoc
-        """
-        return Tool(
-            name="anp.fetchDoc",
-            description=(
-                "Fetch and parse ANP documents, extracting followable links. "
-                "This is the only allowed method for accessing URLs in the ANP ecosystem. "
-                "Returns document content, type information, and discovered links."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "URL of the ANP document to fetch",
-                        "format": "uri",
-                    },
-                },
-                "required": ["url"],
-            },
-        )
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute the fetchDoc tool.
