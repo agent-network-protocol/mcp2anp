@@ -37,7 +37,7 @@
 - 使用标准 `mcp` 库创建 MCP 服务器
 - 通过 `@server.list_tools()` 和 `@server.call_tool()` 装饰器实现工具
 - 支持 stdio 传输协议，可以被任何 MCP 客户端连接
-- 集成 `agent-connect` 库处理 ANP 协议交互
+- 集成 `agent-connect` 库处理 ANP 协议交互。
 
 > 搭配系统提示词：**"任何 fetchDoc返回文档中的URL 必须使用 `anp.fetchDoc` 拉取；如需执行操作，优先选择结构化接口（OpenRPC/YAML）；若接口要求人工授权，先征得用户确认并回填证据。"**
 

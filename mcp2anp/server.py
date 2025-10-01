@@ -1,31 +1,27 @@
 """MCP server implementation for ANP bridge."""
 
 import asyncio
+import json
 from collections.abc import Sequence
 from typing import Any
 
 import click
 import mcp.server.stdio
 import structlog
+from agent_connect.anp_crawler.anp_crawler import ANPCrawler
+from agent_connect.authentication import DIDWbaAuthHeader
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
-from .auth import SessionManager
-from .tools import FetchDocTool, InvokeOpenRPCTool, SetAuthTool
-from .utils import setup_logging
+from .utils import models, setup_logging
 
 logger = structlog.get_logger(__name__)
 
 # 创建 MCP Server 实例
 server = Server("mcp2anp")
 
-# 全局会话管理器
-session_manager = SessionManager()
-
-# 初始化工具
-fetch_doc_tool = FetchDocTool(session_manager)
-invoke_openrpc_tool = InvokeOpenRPCTool(session_manager)
-set_auth_tool = SetAuthTool(session_manager)
+# 全局状态：ANPCrawler 实例（初始化时为 None）
+anp_crawler: ANPCrawler | None = None
 
 
 @server.list_tools()
@@ -91,9 +87,7 @@ async def list_tools() -> list[Tool]:
                         "description": "要调用的 RPC 方法名称",
                     },
                     "params": {
-                        "type": "object",
                         "description": "传递给方法的参数",
-                        "default": {},
                     },
                     "id": {
                         "type": "string",
@@ -113,19 +107,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
 
     try:
         if name == "anp.setAuth":
-            result = await set_auth_tool.execute({
-                "didDocumentPath": arguments.get("did_document_path"),
-                "didPrivateKeyPath": arguments.get("did_private_key_path"),
-            })
+            result = await handle_set_auth(arguments)
         elif name == "anp.fetchDoc":
-            result = await fetch_doc_tool.execute(arguments)
+            result = await handle_fetch_doc(arguments)
         elif name == "anp.invokeOpenRPC":
-            result = await invoke_openrpc_tool.execute(arguments)
+            result = await handle_invoke_openrpc(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
 
         # 将结果转换为字符串格式返回
-        import json
         return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
 
     except Exception as e:
@@ -137,8 +127,178 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
                 "message": str(e)
             }
         }
-        import json
         return [TextContent(type="text", text=json.dumps(error_result, indent=2, ensure_ascii=False))]
+
+
+async def handle_set_auth(arguments: dict[str, Any]) -> dict[str, Any]:
+    """处理 setAuth 工具调用。"""
+    global anp_crawler
+
+    try:
+        # 验证参数
+        request = models.SetAuthRequest(**arguments)
+
+        logger.info(
+            "Setting up authentication",
+            did_doc_path=request.did_document_path,
+            private_key_path=request.did_private_key_path,
+        )
+
+        # 创建新的 ANPCrawler 实例，带认证
+        anp_crawler = ANPCrawler(
+            did_document_path=request.did_document_path,
+            private_key_path=request.did_private_key_path,
+            cache_enabled=True
+        )
+
+        logger.info("Authentication context set successfully")
+        return {"ok": True}
+
+    except Exception as e:
+        logger.error("Failed to set authentication", error=str(e))
+        return {
+            "ok": False,
+            "error": {
+                "code": "ANP_AUTH_ERROR",
+                "message": str(e),
+            },
+        }
+
+
+async def handle_fetch_doc(arguments: dict[str, Any]) -> dict[str, Any]:
+    """处理 fetchDoc 工具调用。"""
+    global anp_crawler
+
+    try:
+        # 验证参数
+        request = models.FetchDocRequest(**arguments)
+
+        logger.info("Fetching document", url=request.url)
+
+        # 如果没有设置 ANPCrawler，使用公共 DID 凭证创建实例
+        if anp_crawler is None:
+            # 使用项目提供的公共 DID 凭证
+            from pathlib import Path
+            project_root = Path(__file__).parent.parent
+            default_did_doc = str(project_root / "docs" / "did_public" / "public-did-doc.json")
+            default_private_key = str(project_root / "docs" / "did_public" / "public-private-key.pem")
+
+            anp_crawler = ANPCrawler(
+                did_document_path=default_did_doc,
+                private_key_path=default_private_key,
+                cache_enabled=True
+            )
+            logger.info("Created ANPCrawler with default DID credentials")
+
+        # 使用 ANPCrawler 获取文档
+        content_result, interfaces = await anp_crawler.fetch_text(request.url)
+
+        # 构建链接列表
+        links = []
+        for interface in interfaces:
+            func_info = interface.get("function", {})
+            links.append({
+                "rel": "interface",
+                "url": request.url,  # ANPCrawler 已经处理了 URL 解析
+                "title": func_info.get("name", ""),
+                "description": func_info.get("description", ""),
+            })
+
+        result = {
+            "ok": True,
+            "contentType": content_result.get("content_type", "application/json"),
+            "text": content_result.get("content", ""),
+            "links": links,
+        }
+
+        # 如果内容是 JSON，尝试解析
+        try:
+            if content_result.get("content"):
+                json_data = json.loads(content_result["content"])
+                result["json"] = json_data
+        except json.JSONDecodeError:
+            pass  # 不是 JSON 内容，跳过
+
+        logger.info("Document fetched successfully", url=request.url, links_count=len(links))
+        return result
+
+    except Exception as e:
+        logger.error("Failed to fetch document", url=arguments.get("url"), error=str(e))
+        return {
+            "ok": False,
+            "error": {
+                "code": "ANP_FETCH_ERROR",
+                "message": str(e),
+            },
+        }
+
+
+async def handle_invoke_openrpc(arguments: dict[str, Any]) -> dict[str, Any]:
+    """处理 invokeOpenRPC 工具调用。"""
+    global anp_crawler
+
+    try:
+        # 验证参数
+        request = models.InvokeOpenRPCRequest(**arguments)
+
+        logger.info(
+            "Invoking OpenRPC method",
+            endpoint=request.endpoint,
+            method=request.method,
+            params=request.params,
+        )
+
+        # 如果没有设置 ANPCrawler，使用公共 DID 凭证创建实例
+        if anp_crawler is None:
+            # 使用项目提供的公共 DID 凭证
+            from pathlib import Path
+            project_root = Path(__file__).parent.parent
+            default_did_doc = str(project_root / "docs" / "did_public" / "public-did-doc.json")
+            default_private_key = str(project_root / "docs" / "did_public" / "public-private-key.pem")
+
+            anp_crawler = ANPCrawler(
+                did_document_path=default_did_doc,
+                private_key_path=default_private_key,
+                cache_enabled=True
+            )
+
+        # 构建工具名称（ANPCrawler 需要这种格式）
+        tool_name = f"{request.method}"
+
+        # 调用工具
+        if request.params is None:
+            tool_params = {}
+        elif isinstance(request.params, dict):
+            tool_params = request.params
+        elif isinstance(request.params, list):
+            # 如果是列表，转换为字典
+            tool_params = {"args": request.params}
+        else:
+            tool_params = {"value": request.params}
+
+        result = await anp_crawler.execute_tool_call(tool_name, tool_params)
+
+        logger.info("OpenRPC method invoked successfully", method=request.method)
+        return {
+            "ok": True,
+            "result": result,
+            "raw": result,  # ANPCrawler 已经返回结构化结果
+        }
+
+    except Exception as e:
+        logger.error(
+            "Failed to invoke OpenRPC method",
+            endpoint=arguments.get("endpoint"),
+            method=arguments.get("method"),
+            error=str(e),
+        )
+        return {
+            "ok": False,
+            "error": {
+                "code": "ANP_RPC_ERROR",
+                "message": str(e),
+            },
+        }
 
 
 async def run_server():

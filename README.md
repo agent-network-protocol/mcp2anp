@@ -28,21 +28,19 @@ flowchart LR
       U -->|optional| T0[anp.setAuth]
     end
 
-    subgraph ANP Bridge
-      T1 --> P1[解析/抽链/缓存]
-      T2 --> A1[OpenRPC 适配器]
-      T0 --> S1[会话级授权上下文]
-      P1 --> S1
-      A1 --> S1
+    subgraph MCP2ANP Bridge
+      T0 --> AC[ANPCrawler创建/更新]
+      T1 --> AC
+      T2 --> AC
+      AC --> DID[DID认证]
+      DID --> AGL[agent-connect库]
     end
 
     subgraph ANP Side
-      D1[AgentDescription] -.-> D2[Informations]
-      D1 -.-> D3[Interfaces]
-      A1 -->|JSON-RPC| E1[OpenRPC Endpoint]
-      P1 -->|HTTP GET| D1
-      P1 -->|HTTP GET| D2
-      P1 -->|HTTP GET| D3
+      AGL -->|HTTP+DID| D1[AgentDescription]
+      AGL -->|HTTP+DID| D2[Informations]
+      AGL -->|HTTP+DID| D3[Interfaces]
+      AGL -->|JSON-RPC+DID| E1[OpenRPC Endpoint]
     end
 ```
 
@@ -77,27 +75,27 @@ uv run mcp2anp --log-level INFO
 1. **设置认证（可选）**:
    ```json
    {
-     "didDocumentPath": "path/to/did-document.json",
-     "didPrivateKeyPath": "path/to/private-key.pem"
+     "didDocumentPath": "docs/did_public/public-did-doc.json",
+     "didPrivateKeyPath": "docs/did_public/public-private-key.pem"
    }
    ```
+   *注：如果不调用setAuth，系统会自动使用docs/did_public/中的公共DID凭证*
 
 2. **获取 ANP 文档**:
    ```json
    {
-     "url": "https://grand-hotel.com/agents/hotel-assistant/ad.json"
+     "url": "https://agent-connect.ai/agents/travel/mcp/agents/amap/ad.json"
    }
    ```
 
 3. **调用 OpenRPC 方法**:
    ```json
    {
-     "endpoint": "https://grand-hotel.com/api/booking",
-     "method": "confirmBooking",
+     "endpoint": "https://example.com/rpc",
+     "method": "searchLocations",
      "params": {
-       "checkIn": "2025-10-01",
-       "checkOut": "2025-10-03",
-       "roomType": "standard"
+       "query": "北京天安门",
+       "city": "北京"
      }
    }
    ```
@@ -146,18 +144,17 @@ uv run mcp2anp --log-level INFO
 ```
 mcp2anp/
 ├── mcp2anp/             # 源代码
-│   ├── server.py         # 主服务器
-│   ├── tools/            # MCP 工具实现
-│   ├── adapters/         # 协议适配器
-│   ├── auth/             # 认证和会话管理
+│   ├── server.py         # 主服务器（集成所有功能）
 │   └── utils/            # 工具和模型
-├── tests/                # 测试代码
-│   ├── unit/             # 单元测试
-│   ├── integration/      # 集成测试
-│   └── fixtures/         # 测试数据
 ├── docs/                 # 文档
-│   ├── examples/         # 示例配置
-│   └── usage.md          # 使用指南
+│   ├── did_public/       # 公共DID认证凭证
+│   │   ├── public-did-doc.json
+│   │   └── public-private-key.pem
+│   └── examples/         # 示例配置
+├── examples/             # 测试和示例代码
+│   ├── test_example.py
+│   └── test_individual_tools.py
+├── run_tests.sh          # 交互式测试脚本
 └── pyproject.toml        # 项目配置
 ```
 
@@ -194,9 +191,6 @@ uv run black mcp2anp/ tests/
 
 # 代码检查
 uv run ruff mcp2anp/ tests/
-
-# 类型检查
-uv run mypy mcp2anp/
 ```
 
 ## 使用示例
