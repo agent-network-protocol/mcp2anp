@@ -18,9 +18,18 @@ from mcp.client.stdio import stdio_client
 logger = structlog.get_logger(__name__)
 
 
-async def demo_basic_usage():
-    """演示基本用法"""
-    print("=== MCP 客户端基本用法演示 ===")
+def _get_protocol_for_url(url: str) -> str:
+    """根据域名判断使用 HTTP 还是 HTTPS"""
+    import re
+    # 如果是 localhost、IP 地址或 .local 域名，使用 HTTP
+    if re.match(r'^(localhost|\d+\.\d+\.\d+\.\d+|.*\.local)(:\d+)?', url):
+        return "http"
+    return "https"
+
+
+async def demo_with_auth():
+    """演示带认证的使用"""
+    print("=== MCP 客户端认证演示 ===")
 
     # 配置 MCP 服务器参数
     server_params = StdioServerParameters(
@@ -42,9 +51,34 @@ async def demo_basic_usage():
             for tool in tools:
                 print(f"  - {tool.name}: {tool.description or '无描述'}")
 
+            # 首先设置认证（使用项目提供的公共 DID 凭证）
+            print("\n=== 设置 DID 认证 ===")
+            try:
+                auth_result = await session.call_tool(
+                    "anp.setAuth",
+                    arguments={
+                        "did_document_path": "docs/did_public/public-did-doc.json",
+                        "did_private_key_path": "docs/did_public/public-private-key.pem"
+                    }
+                )
+                print("\n认证结果:")
+                for content in auth_result.content:
+                    content_dict = content.model_dump()
+                    if content_dict.get('type') == 'text':
+                        try:
+                            text_data = json.loads(content_dict.get('text', '{}'))
+                            print(json.dumps(text_data, indent=2, ensure_ascii=False))
+                        except json.JSONDecodeError:
+                            print(content_dict.get('text'))
+                print("\n✅ 认证设置完成")
+            except Exception as e:
+                print(f"\n❌ 认证设置失败: {e}")
+                print("提示: 请确保 docs/did_public/ 目录中存在正确的 DID 凭证文件")
+                return
+
             # 演示调用 anp.fetchDoc 工具（测试本地 ANP 服务器）
             print("\n=== 演示调用 anp.fetchDoc 工具 ===")
-            test_url = "http://localhost:8000/agents/travel/test/ad.json"
+            test_url = "http://localhost:8000/agents/test/ad.json"
             print(f"测试 URL: {test_url}")
             try:
                 result = await session.call_tool(
@@ -65,40 +99,23 @@ async def demo_basic_usage():
                 print(f"调用 fetchDoc 失败: {e}")
                 print("提示: 请确保本地 ANP 服务器正在运行 (http://localhost:8000)")
 
-
-async def demo_with_auth():
-    """演示带认证的使用（使用真实的 DID 文档）"""
-    print("\n=== MCP 客户端认证演示 ===")
-    print("注意: 此演示需要 DID 私钥文件，如果没有私钥将无法完成认证")
-
-    # 配置 MCP 服务器参数
-    server_params = StdioServerParameters(
-        command="uv",
-        args=["run", "python", "-m", "mcp2anp.server"],
-        env=None
-    )
-
-    # 使用 MCP SDK 的 stdio_client 连接服务器
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            # 初始化会话
-            await session.initialize()
-
-            # 使用真实的 DID 文档（但没有私钥，仅演示流程）
-            print("\n尝试加载 DID 文档: docs/did_public/public-did-doc.json")
-            print("(注意: 私钥文件不存在，此步骤将失败，这是预期的)")
-
+            # 演示调用 anp.invokeOpenRPC 工具（测试 echo 方法）
+            print("\n=== 演示调用 anp.invokeOpenRPC 工具 (echo 方法) ===")
+            test_message = "Hello from MCP client!"
+            jsonrpc_endpoint = "http://localhost:8000/agents/test/jsonrpc"
+            print(f"测试消息: {test_message}")
+            print(f"JSON-RPC 端点: {jsonrpc_endpoint}")
             try:
-                auth_result = await session.call_tool(
-                    "anp.setAuth",
+                rpc_result = await session.call_tool(
+                    "anp.invokeOpenRPC",
                     arguments={
-                        "did_document_path": "docs/did_public/public-did-doc.json",
-                        "did_private_key_path": "docs/did_public/private-key.pem"
+                        "endpoint": jsonrpc_endpoint,
+                        "method": "echo",
+                        "params": {"message": test_message}
                     }
                 )
-
-                print("\n认证结果:")
-                for content in auth_result.content:
+                print("\necho 方法调用结果:")
+                for content in rpc_result.content:
                     content_dict = content.model_dump()
                     if content_dict.get('type') == 'text':
                         try:
@@ -106,33 +123,36 @@ async def demo_with_auth():
                             print(json.dumps(text_data, indent=2, ensure_ascii=False))
                         except json.JSONDecodeError:
                             print(content_dict.get('text'))
-
-                # 如果认证成功，可以调用需要认证的工具
-                if any(hasattr(c, 'text') and '"ok": true' in c.text for c in auth_result.content):
-                    print("\n✅ 认证成功！调用需要认证的 OpenRPC 端点...")
-                    rpc_result = await session.call_tool(
-                        "anp.invokeOpenRPC",
-                        arguments={
-                            "endpoint": "http://localhost:8000/api/rpc",
-                            "method": "getInfo",
-                            "params": {}
-                        }
-                    )
-                    print("\nOpenRPC 结果:")
-                    for content in rpc_result.content:
-                        content_dict = content.model_dump()
-                        if content_dict.get('type') == 'text':
-                            try:
-                                text_data = json.loads(content_dict.get('text', '{}'))
-                                print(json.dumps(text_data, indent=2, ensure_ascii=False))
-                            except json.JSONDecodeError:
-                                print(content_dict.get('text'))
-                else:
-                    print("\n❌ 认证失败（预期的，因为缺少私钥文件）")
-
             except Exception as e:
-                print(f"\n❌ 认证过程出错: {e}")
-                print("提示: 这是预期的，因为私钥文件不存在")
+                print(f"调用 echo 方法失败: {e}")
+                print("提示: 请确保本地 ANP 服务器正在运行 (http://localhost:8000)")
+
+            # 演示调用 anp.invokeOpenRPC 工具（测试 getStatus 方法）
+            print("\n=== 演示调用 anp.invokeOpenRPC 工具 (getStatus 方法) ===")
+            print(f"JSON-RPC 端点: {jsonrpc_endpoint}")
+            try:
+                status_result = await session.call_tool(
+                    "anp.invokeOpenRPC",
+                    arguments={
+                        "endpoint": jsonrpc_endpoint,
+                        "method": "getStatus",
+                        "params": {}
+                    }
+                )
+                print("\ngetStatus 方法调用结果:")
+                for content in status_result.content:
+                    content_dict = content.model_dump()
+                    if content_dict.get('type') == 'text':
+                        try:
+                            text_data = json.loads(content_dict.get('text', '{}'))
+                            print(json.dumps(text_data, indent=2, ensure_ascii=False))
+                        except json.JSONDecodeError:
+                            print(content_dict.get('text'))
+            except Exception as e:
+                print(f"调用 getStatus 方法失败: {e}")
+                print("提示: 请确保本地 ANP 服务器正在运行 (http://localhost:8000)")
+
+
 
 
 async def main():
@@ -156,14 +176,16 @@ async def main():
     print("==========================================")
 
     try:
-        # 基本用法演示
-        await demo_basic_usage()
-
-        # 认证演示
+        # 统一演示（包含认证和所有工具调用）
         await demo_with_auth()
 
         print("\n=== 演示完成 ===")
-        print("要在实际项目中使用，你可以:")
+        print("演示内容包括:")
+        print("- anp.setAuth: DID 认证设置（使用公共 DID 凭证）")
+        print("- anp.fetchDoc: 获取智能体描述文档")
+        print("- anp.invokeOpenRPC(echo): 调用回显方法测试连接")
+        print("- anp.invokeOpenRPC(getStatus): 获取智能体状态信息")
+        print("\n要在实际项目中使用，你可以:")
         print("1. 导入 MCP SDK: from mcp import ClientSession, StdioServerParameters")
         print("2. 导入 stdio_client: from mcp.client.stdio import stdio_client")
         print("3. 配置服务器参数: server_params = StdioServerParameters(...)")
