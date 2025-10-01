@@ -17,15 +17,8 @@ from mcp.client.stdio import stdio_client
 
 logger = structlog.get_logger(__name__)
 
-
-def _get_protocol_for_url(url: str) -> str:
-    """根据域名判断使用 HTTP 还是 HTTPS"""
-    import re
-    # 如果是 localhost、IP 地址或 .local 域名，使用 HTTP
-    if re.match(r'^(localhost|\d+\.\d+\.\d+\.\d+|.*\.local)(:\d+)?', url):
-        return "http"
-    return "https"
-
+# Configuration: ANP service domain
+ANP_DOMAIN = "https://agent-connect.ai"
 
 async def demo_with_auth():
     """演示带认证的使用"""
@@ -78,7 +71,7 @@ async def demo_with_auth():
 
             # 演示调用 anp.fetchDoc 工具（测试本地 ANP 服务器）
             print("\n=== 演示调用 anp.fetchDoc 工具 ===")
-            test_url = "http://localhost:8000/agents/test/ad.json"
+            test_url = f"{ANP_DOMAIN}/agents/test/ad.json"
             print(f"测试 URL: {test_url}")
             try:
                 result = await session.call_tool(
@@ -97,12 +90,12 @@ async def demo_with_auth():
                             print(content_dict.get('text'))
             except Exception as e:
                 print(f"调用 fetchDoc 失败: {e}")
-                print("提示: 请确保本地 ANP 服务器正在运行 (http://localhost:8000)")
+                print(f"提示: 请确保本地 ANP 服务器正在运行 (ANP_DOMAIN: {ANP_DOMAIN})")
 
             # 演示调用 anp.invokeOpenRPC 工具（测试 echo 方法）
             print("\n=== 演示调用 anp.invokeOpenRPC 工具 (echo 方法) ===")
             test_message = "Hello from MCP client!"
-            jsonrpc_endpoint = "http://localhost:8000/agents/test/jsonrpc"
+            jsonrpc_endpoint = f"{ANP_DOMAIN}/agents/test/jsonrpc"
             print(f"测试消息: {test_message}")
             print(f"JSON-RPC 端点: {jsonrpc_endpoint}")
             try:
@@ -125,7 +118,7 @@ async def demo_with_auth():
                             print(content_dict.get('text'))
             except Exception as e:
                 print(f"调用 echo 方法失败: {e}")
-                print("提示: 请确保本地 ANP 服务器正在运行 (http://localhost:8000)")
+                print(f"提示: 请确保本地 ANP 服务器正在运行 (ANP_DOMAIN: {ANP_DOMAIN})")
 
             # 演示调用 anp.invokeOpenRPC 工具（测试 getStatus 方法）
             print("\n=== 演示调用 anp.invokeOpenRPC 工具 (getStatus 方法) ===")
@@ -150,7 +143,7 @@ async def demo_with_auth():
                             print(content_dict.get('text'))
             except Exception as e:
                 print(f"调用 getStatus 方法失败: {e}")
-                print("提示: 请确保本地 ANP 服务器正在运行 (http://localhost:8000)")
+                print(f"提示: 请确保本地 ANP 服务器正在运行 (ANP_DOMAIN: {ANP_DOMAIN})")
 
 
 
