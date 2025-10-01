@@ -9,7 +9,9 @@ MCP 客户端 Demo
 import asyncio
 import json
 import logging
+import os
 import sys
+from pathlib import Path
 
 import structlog
 from mcp import ClientSession, StdioServerParameters
@@ -20,9 +22,15 @@ logger = structlog.get_logger(__name__)
 # Configuration: ANP service domain
 ANP_DOMAIN = "https://agent-connect.ai"
 
-async def demo_with_auth():
-    """演示带认证的使用"""
-    print("=== MCP 客户端认证演示 ===")
+# Configure DID credentials using absolute paths
+project_root = Path(__file__).parent.parent
+os.environ["ANP_DID_DOCUMENT_PATH"] = str(project_root / "docs" / "did_public" / "public-did-doc.json")
+os.environ["ANP_DID_PRIVATE_KEY_PATH"] = str(project_root / "docs" / "did_public" / "public-private-key.pem")
+
+async def demo_basic_usage():
+    """演示基本用法"""
+    print("=== MCP 客户端基本用法演示 ===")
+    print("注意: DID 认证通过环境变量配置，或使用默认凭证\n")
 
     # 配置 MCP 服务器参数
     server_params = StdioServerParameters(
@@ -40,34 +48,9 @@ async def demo_with_auth():
             # 获取工具列表
             tools_result = await session.list_tools()
             tools = tools_result.tools
-            print(f"\n可用工具数量: {len(tools)}")
+            print(f"可用工具数量: {len(tools)}")
             for tool in tools:
                 print(f"  - {tool.name}: {tool.description or '无描述'}")
-
-            # 首先设置认证（使用项目提供的公共 DID 凭证）
-            print("\n=== 设置 DID 认证 ===")
-            try:
-                auth_result = await session.call_tool(
-                    "anp.setAuth",
-                    arguments={
-                        "did_document_path": "docs/did_public/public-did-doc.json",
-                        "did_private_key_path": "docs/did_public/public-private-key.pem"
-                    }
-                )
-                print("\n认证结果:")
-                for content in auth_result.content:
-                    content_dict = content.model_dump()
-                    if content_dict.get('type') == 'text':
-                        try:
-                            text_data = json.loads(content_dict.get('text', '{}'))
-                            print(json.dumps(text_data, indent=2, ensure_ascii=False))
-                        except json.JSONDecodeError:
-                            print(content_dict.get('text'))
-                print("\n✅ 认证设置完成")
-            except Exception as e:
-                print(f"\n❌ 认证设置失败: {e}")
-                print("提示: 请确保 docs/did_public/ 目录中存在正确的 DID 凭证文件")
-                return
 
             # 演示调用 anp.fetchDoc 工具（测试本地 ANP 服务器）
             print("\n=== 演示调用 anp.fetchDoc 工具 ===")
@@ -169,15 +152,18 @@ async def main():
     print("==========================================")
 
     try:
-        # 统一演示（包含认证和所有工具调用）
-        await demo_with_auth()
+        # 基本用法演示
+        await demo_basic_usage()
 
         print("\n=== 演示完成 ===")
         print("演示内容包括:")
-        print("- anp.setAuth: DID 认证设置（使用公共 DID 凭证）")
         print("- anp.fetchDoc: 获取智能体描述文档")
         print("- anp.invokeOpenRPC(echo): 调用回显方法测试连接")
         print("- anp.invokeOpenRPC(getStatus): 获取智能体状态信息")
+        print("\n环境变量配置:")
+        print("- ANP_DID_DOCUMENT_PATH: 自定义 DID 文档路径")
+        print("- ANP_DID_PRIVATE_KEY_PATH: 自定义 DID 私钥路径")
+        print("（未设置时使用默认凭证）")
         print("\n要在实际项目中使用，你可以:")
         print("1. 导入 MCP SDK: from mcp import ClientSession, StdioServerParameters")
         print("2. 导入 stdio_client: from mcp.client.stdio import stdio_client")

@@ -80,6 +80,16 @@ uv run python examples/mcp_client_demo.py
 
 > 该脚本会通过 stdio 启动 `mcp2anp.server`，依次演示 `anp.setAuth`、`anp.fetchDoc` 与 `anp.invokeOpenRPC`。如需与真实 ANP 服务联调，请确保本地或远程 JSON-RPC 端点可达。
 
+### Claude code中添加此mcp server
+
+```bash
+cd project_root
+claude mcp add mcp2anp \
+  --env ANP_DID_DOCUMENT_PATH=docs/did_public/public-did-doc.json \
+  --env ANP_DID_PRIVATE_KEY_PATH=docs/did_public/public-private-key.pem \
+  -- uv run python -m mcp2anp.server
+```
+
 ### 基本使用
 
 1. **设置认证（可选）**:

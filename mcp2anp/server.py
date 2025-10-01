@@ -2,14 +2,15 @@
 
 import asyncio
 import json
+import os
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import click
 import mcp.server.stdio
 import structlog
 from agent_connect.anp_crawler.anp_crawler import ANPCrawler
-from agent_connect.authentication import DIDWbaAuthHeader
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
@@ -20,7 +21,7 @@ logger = structlog.get_logger(__name__)
 # 创建 MCP Server 实例
 server = Server("mcp2anp")
 
-# 全局状态：ANPCrawler 实例（初始化时为 None）
+# 全局状态：ANPCrawler 实例（在启动时初始化）
 anp_crawler: ANPCrawler | None = None
 
 
@@ -28,27 +29,6 @@ anp_crawler: ANPCrawler | None = None
 async def list_tools() -> list[Tool]:
     """返回可用工具列表。"""
     return [
-        Tool(
-            name="anp.setAuth",
-            description=(
-                "设置 DID 认证上下文。使用本地 DID 文档和私钥文件建立认证，"
-                "后续的 fetchDoc 和 invokeOpenRPC 调用将自动使用这些凭证。"
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "did_document_path": {
-                        "type": "string",
-                        "description": "DID 文档 JSON 文件的路径",
-                    },
-                    "did_private_key_path": {
-                        "type": "string",
-                        "description": "DID 私钥 PEM 文件的路径",
-                    },
-                },
-                "required": ["did_document_path", "did_private_key_path"],
-            },
-        ),
         Tool(
             name="anp.fetchDoc",
             description=(
@@ -106,9 +86,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
     logger.info("Tool called", tool_name=name, args=arguments)
 
     try:
-        if name == "anp.setAuth":
-            result = await handle_set_auth(arguments)
-        elif name == "anp.fetchDoc":
+        if name == "anp.fetchDoc":
             result = await handle_fetch_doc(arguments)
         elif name == "anp.invokeOpenRPC":
             result = await handle_invoke_openrpc(arguments)
@@ -130,39 +108,49 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
         return [TextContent(type="text", text=json.dumps(error_result, indent=2, ensure_ascii=False))]
 
 
-async def handle_set_auth(arguments: dict[str, Any]) -> dict[str, Any]:
-    """处理 setAuth 工具调用。"""
+def initialize_anp_crawler() -> None:
+    """从环境变量初始化 ANPCrawler。"""
     global anp_crawler
 
-    try:
-        # 验证参数
-        request = models.SetAuthRequest(**arguments)
+    # 从环境变量读取 DID 凭证路径
+    did_document_path = os.environ.get("ANP_DID_DOCUMENT_PATH")
+    did_private_key_path = os.environ.get("ANP_DID_PRIVATE_KEY_PATH")
 
+    logger.info(
+        "DID credentials from environment variables",
+        did_doc=did_document_path,
+        private_key=did_private_key_path,
+    )
+
+    # 如果环境变量未设置，使用默认的公共 DID 凭证
+    if not did_document_path or not did_private_key_path:
+        project_root = Path(__file__).parent.parent
+        did_document_path = str(project_root / "docs" / "did_public" / "public-did-doc.json")
+        did_private_key_path = str(project_root / "docs" / "did_public" / "public-private-key.pem")
         logger.info(
-            "Setting up authentication",
-            did_doc_path=request.did_document_path,
-            private_key_path=request.did_private_key_path,
+            "Using default DID credentials",
+            did_doc=did_document_path,
+            private_key=did_private_key_path,
+        )
+    else:
+        logger.info(
+            "Using DID credentials from environment variables",
+            did_doc=did_document_path,
+            private_key=did_private_key_path,
         )
 
-        # 创建新的 ANPCrawler 实例，带认证
+    try:
+        # 创建 ANPCrawler 实例
         anp_crawler = ANPCrawler(
-            did_document_path=request.did_document_path,
-            private_key_path=request.did_private_key_path,
+            did_document_path=did_document_path,
+            private_key_path=did_private_key_path,
             cache_enabled=True
         )
-
-        logger.info("Authentication context set successfully")
-        return {"ok": True}
-
+        logger.info("ANPCrawler initialized successfully")
     except Exception as e:
-        logger.error("Failed to set authentication", error=str(e))
-        return {
-            "ok": False,
-            "error": {
-                "code": "ANP_AUTH_ERROR",
-                "message": str(e),
-            },
-        }
+        logger.error("Failed to initialize ANPCrawler", error=str(e))
+        # 继续运行，但工具调用将失败并显示适当的错误消息
+        anp_crawler = None
 
 
 async def handle_fetch_doc(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -175,20 +163,15 @@ async def handle_fetch_doc(arguments: dict[str, Any]) -> dict[str, Any]:
 
         logger.info("Fetching document", url=request.url)
 
-        # 如果没有设置 ANPCrawler，使用公共 DID 凭证创建实例
+        # 检查 ANPCrawler 是否已初始化
         if anp_crawler is None:
-            # 使用项目提供的公共 DID 凭证
-            from pathlib import Path
-            project_root = Path(__file__).parent.parent
-            default_did_doc = str(project_root / "docs" / "did_public" / "public-did-doc.json")
-            default_private_key = str(project_root / "docs" / "did_public" / "public-private-key.pem")
-
-            anp_crawler = ANPCrawler(
-                did_document_path=default_did_doc,
-                private_key_path=default_private_key,
-                cache_enabled=True
-            )
-            logger.info("Created ANPCrawler with default DID credentials")
+            return {
+                "ok": False,
+                "error": {
+                    "code": "ANP_NOT_INITIALIZED",
+                    "message": "ANPCrawler not initialized. Please check DID credentials.",
+                },
+            }
 
         # 使用 ANPCrawler 获取文档
         content_result, interfaces = await anp_crawler.fetch_text(request.url)
@@ -248,19 +231,15 @@ async def handle_invoke_openrpc(arguments: dict[str, Any]) -> dict[str, Any]:
             params=request.params,
         )
 
-        # 如果没有设置 ANPCrawler，使用公共 DID 凭证创建实例
+        # 检查 ANPCrawler 是否已初始化
         if anp_crawler is None:
-            # 使用项目提供的公共 DID 凭证
-            from pathlib import Path
-            project_root = Path(__file__).parent.parent
-            default_did_doc = str(project_root / "docs" / "did_public" / "public-did-doc.json")
-            default_private_key = str(project_root / "docs" / "did_public" / "public-private-key.pem")
-
-            anp_crawler = ANPCrawler(
-                did_document_path=default_did_doc,
-                private_key_path=default_private_key,
-                cache_enabled=True
-            )
+            return {
+                "ok": False,
+                "error": {
+                    "code": "ANP_NOT_INITIALIZED",
+                    "message": "ANPCrawler not initialized. Please check DID credentials.",
+                },
+            }
 
         # 构建工具名称（ANPCrawler 需要这种格式）
         tool_name = f"{request.method}"
@@ -324,8 +303,18 @@ async def run_server():
     help="启用开发热重载",
 )
 def main(log_level: str, reload: bool) -> None:
-    """运行 MCP2ANP 桥接服务器。"""
+    """运行 MCP2ANP 桥接服务器。
+
+    环境变量:
+        ANP_DID_DOCUMENT_PATH: DID 文档 JSON 文件路径
+        ANP_DID_PRIVATE_KEY_PATH: DID 私钥 PEM 文件路径
+
+    如果未设置环境变量，将使用默认的公共 DID 凭证。
+    """
     setup_logging(log_level)
+
+    # 初始化 ANPCrawler
+    initialize_anp_crawler()
 
     if reload:
         logger.info("Starting MCP2ANP server with hot reload enabled")
