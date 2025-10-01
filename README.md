@@ -70,6 +70,16 @@ uv run mcp2anp --reload --log-level DEBUG
 uv run mcp2anp --log-level INFO
 ```
 
+### 运行官方 Demo（推荐）
+
+项目提供了基于 MCP 官方 SDK 的完整客户端演示脚本，能够从启动服务器到调用所有工具一次跑通。推荐使用下列命令直接体验：
+
+```bash
+uv run python examples/mcp_client_demo.py
+```
+
+> 该脚本会通过 stdio 启动 `mcp2anp.server`，依次演示 `anp.setAuth`、`anp.fetchDoc` 与 `anp.invokeOpenRPC`。如需与真实 ANP 服务联调，请确保本地或远程 JSON-RPC 端点可达。
+
 ### 基本使用
 
 1. **设置认证（可选）**:
@@ -142,20 +152,33 @@ uv run mcp2anp --log-level INFO
 ## 项目结构
 
 ```
-mcp2anp/
-├── mcp2anp/             # 源代码
-│   ├── server.py         # 主服务器（集成所有功能）
-│   └── utils/            # 工具和模型
-├── docs/                 # 文档
-│   ├── did_public/       # 公共DID认证凭证
+.
+├── mcp2anp/                 # 核心服务实现
+│   ├── server.py            # MCP ↔ ANP 桥接服务器入口
+│   └── utils/               # 公共模型与日志工具
+│       ├── logging.py
+│       └── models.py
+├── examples/                # 官方示例与辅助脚本
+│   ├── mcp_client_demo.py   # ⭐ 推荐：使用官方 MCP SDK 的客户端演示
+│   ├── test_with_local_server.py
+│   ├── README.md
+│   └── SDK_MIGRATION.md
+├── docs/                    # 文档与示例配置
+│   ├── usage.md
+│   ├── did_public/
 │   │   ├── public-did-doc.json
 │   │   └── public-private-key.pem
-│   └── examples/         # 示例配置
-├── examples/             # 测试和示例代码
-│   ├── test_example.py
-│   └── test_individual_tools.py
-├── run_tests.sh          # 交互式测试脚本
-└── pyproject.toml        # 项目配置
+│   └── examples/
+│       ├── anp-agent-description.example.json
+│       ├── did-document.example.json
+│       ├── openrpc-interface.example.json
+│       └── private-key.example.pem
+├── assets/                  # 参考资源（图示、日志等）
+├── spec.md                  # 协议说明草案
+├── run_tests.sh             # 本地测试脚本
+├── pyproject.toml           # 构建与依赖配置
+├── uv.toml                  # uv 设置
+└── uv.lock                  # 依赖锁定文件
 ```
 
 ## 开发
@@ -194,6 +217,23 @@ uv run ruff mcp2anp/ tests/
 ```
 
 ## 使用示例
+
+### 官方 MCP 客户端 Demo（`examples/mcp_client_demo.py`）
+
+`examples/mcp_client_demo.py` 通过 MCP 官方 SDK 的 `stdio_client` 启动 `mcp2anp.server` 并串联所有工具，是最快速了解桥接工作方式的脚本：
+
+```bash
+uv run python examples/mcp_client_demo.py
+```
+
+脚本会自动：
+
+- 列出 `mcp2anp` 暴露的工具
+- 使用 `docs/did_public/` 内的公共凭证调用 `anp.setAuth`
+- 访问 `anp.fetchDoc` 并展示返回的链接
+- 调用 `anp.invokeOpenRPC` 的 `echo` 和 `getStatus` 方法验证回路
+
+如需与真实环境交互，可将脚本中的测试 URL 替换为目标 ANP 服务地址。
 
 ### 完整的酒店预订工作流
 
