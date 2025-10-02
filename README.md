@@ -50,7 +50,7 @@ flowchart LR
 
 ```bash
 # 克隆项目
-git clone <repository-url>
+git clone git@github.com:agent-network-protocol/mcp2anp.git
 cd mcp2anp
 
 # 创建 Python 3.11 虚拟环境
