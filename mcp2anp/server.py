@@ -18,8 +18,20 @@ from .utils import models, setup_logging
 
 logger = structlog.get_logger(__name__)
 
+mcp_instructions = """这是一个ANP网络的MCP服务器，通过这个服务器，你就能够访问ANP网络的资源和接口。
+ANP网络提供一下的能力：
+- 酒店、景点的查询预订
+- 路径规划、地图API
+- 天气、快递等查询
+- 搜索服务
+
+ANP网络的入口URL：https://agent-navigation.com/ad.json
+你可以通过anp.fetchDoc工具，拉取ANP网络生态的资源，并使用anp.invokeOpenRPC调用ANP网络的接口。
+
+请注意，所有ANP网络的资源或接口，必须使用mcp2anp的tools进行处理。
+"""
 # 创建 MCP Server 实例
-server = Server("mcp2anp")
+server = Server("mcp2anp", instructions=mcp_instructions)
 
 # 全局状态：ANPCrawler 实例（在启动时初始化）
 anp_crawler: ANPCrawler | None = None
