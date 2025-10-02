@@ -27,6 +27,8 @@ uv sync
 
 ## Claude code中添加此mcp server
 
+### 在mcp2anp目录安装
+
 ```bash
 cd mcp2anp
 claude mcp add mcp2anp \
@@ -34,6 +36,17 @@ claude mcp add mcp2anp \
   --env ANP_DID_PRIVATE_KEY_PATH=docs/did_public/public-private-key.pem \
   -- uv run python -m mcp2anp.server
 ```
+
+### 在其他目录安装
+
+```bash
+claude mcp add mcp2anp \
+  --env ANP_DID_DOCUMENT_PATH=/Users/cs/work/mcp2anp/docs/did_public/public-did-doc.json \
+  --env ANP_DID_PRIVATE_KEY_PATH=/Users/cs/work/mcp2anp/docs/did_public/public-private-key.pem \
+  -- uv run --directory /Users/cs/work/mcp2anp python -m mcp2anp.server
+```
+
+
 
 查看mcp安装结果：
 
@@ -46,4 +59,8 @@ claude mcp list
 打开Claude Code，输入以下命令：
 
 帮我看看ANP的URL： https://agent-connect.ai/agents/test/ad.json  中，有那些可用的工具。
+
+
+
+
 

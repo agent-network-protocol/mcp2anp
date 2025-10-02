@@ -82,12 +82,25 @@ uv run python examples/mcp_client_demo.py
 
 ### Claude code中添加此mcp server
 
+助于：下面的路径需要更改为你自己路径
+
+### 在mcp2anp目录安装
+
 ```bash
-cd project_root
+cd mcp2anp
 claude mcp add mcp2anp \
   --env ANP_DID_DOCUMENT_PATH=docs/did_public/public-did-doc.json \
   --env ANP_DID_PRIVATE_KEY_PATH=docs/did_public/public-private-key.pem \
   -- uv run python -m mcp2anp.server
+```
+
+### 在其他目录安装
+
+```bash
+claude mcp add mcp2anp \
+  --env ANP_DID_DOCUMENT_PATH=/Users/cs/work/mcp2anp/docs/did_public/public-did-doc.json \
+  --env ANP_DID_PRIVATE_KEY_PATH=/Users/cs/work/mcp2anp/docs/did_public/public-private-key.pem \
+  -- uv run --directory /Users/cs/work/mcp2anp python -m mcp2anp.server
 ```
 
 ### 基本使用
