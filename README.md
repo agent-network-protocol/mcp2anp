@@ -7,16 +7,23 @@
 
 ## 概述
 
-MCP2ANP 是一个 **本地 MCP 服务器**，将 ANP (Agent Network Protocol) 的"爬虫式"交互范式转换为 MCP (Model Control Protocol) 工具，使 Claude Desktop、Cursor、各类 IDE 等 MCP 客户端无需改造即可访问 ANP 智能体。
+MCP2ANP 是一个 **MCP 桥接服务器**，将 ANP (Agent Network Protocol) 的"爬虫式"交互范式转换为 MCP (Model Control Protocol) 工具，使 Claude Desktop、Cursor、各类 IDE 等 MCP 客户端无需改造即可访问 ANP 智能体。
 
 ### 核心特性
 
-- 🔧 **三个核心工具**: `anp.setAuth`、`anp.fetchDoc`、`anp.invokeOpenRPC`
+- 🔧 **两个核心工具**: `anp.fetchDoc`、`anp.invokeOpenRPC`
 - 🔐 **DID 认证支持**: 本地 DID 文档和私钥管理
 - 🌐 **协议适配**: ANP 爬虫式交互 ↔ MCP 工具式交互
-- 🚀 **本地服务**: 无需远程服务器，直接运行在本地
+- 🚀 **双模式支持**: 本地 stdio 模式 + 远程 HTTP API 模式
 - 📊 **结构化日志**: 完整的操作追踪和调试信息
 - 🧪 **全面测试**: 单元测试和集成测试覆盖
+
+### 运行模式
+
+- **本地模式（stdio）**: 通过标准输入输出与 MCP 客户端通信，适用于 Claude Desktop 等桌面应用
+- **远程模式（HTTP）**: 通过 FastAPI 提供 HTTP API，支持远程调用，使用 API Key 进行鉴权
+
+详见 [远程服务器文档](docs/REMOTE_SERVER.md)
 
 ## 架构设计
 
@@ -62,13 +69,33 @@ uv sync
 
 ### 启动服务器
 
-```bash
-# 开发模式（带热重载）
-uv run mcp2anp --reload --log-level DEBUG
+**本地模式（stdio）**：
 
-# 生产模式
-uv run mcp2anp --log-level INFO
+```bash
+# 使用统一CLI
+uv run mcp2anp local --log-level INFO
+
+# 或使用专用命令
+uv run mcp2anp-local --log-level INFO
+
+# 开发模式（带热重载）
+uv run mcp2anp local --reload --log-level DEBUG
 ```
+
+**远程模式（HTTP API）**：
+
+```bash
+# 设置API Key（必需）
+export MCP2ANP_API_KEY="your-secret-api-key"
+
+# 启动远程服务器
+uv run mcp2anp remote --host 0.0.0.0 --port 8000
+
+# 或使用专用命令
+uv run mcp2anp-remote
+```
+
+详细的远程模式使用方法请参见 [远程服务器文档](docs/REMOTE_SERVER.md)
 
 ### 运行官方 Demo（推荐）
 
@@ -135,15 +162,7 @@ claude mcp add mcp2anp \
 
 ## 工具说明
 
-### anp.setAuth
-
-设置 DID 认证上下文，用于后续的文档获取和 RPC 调用。
-
-**输入**:
-- `didDocumentPath`: DID 文档 JSON 文件路径
-- `didPrivateKeyPath`: DID 私钥 PEM 文件路径
-
-**输出**: `{"ok": true}` 或错误信息
+> **注意**: `anp.setAuth` 工具已移除。系统现在自动使用环境变量或默认的公共 DID 凭证进行认证。
 
 ### anp.fetchDoc
 
@@ -177,7 +196,11 @@ claude mcp add mcp2anp \
 ```
 .
 ├── mcp2anp/                 # 核心服务实现
-│   ├── server.py            # MCP ↔ ANP 桥接服务器入口
+│   ├── __main__.py          # 统一CLI入口
+│   ├── server.py            # 本地stdio模式服务器
+│   ├── server_remote.py     # 远程HTTP模式服务器
+│   ├── core/                # 共享核心模块
+│   │   └── handlers.py      # ANP工具处理逻辑
 │   └── utils/               # 公共模型与日志工具
 │       ├── logging.py
 │       └── models.py
@@ -188,6 +211,7 @@ claude mcp add mcp2anp \
 │   └── SDK_MIGRATION.md
 ├── docs/                    # 文档与示例配置
 │   ├── usage.md
+│   ├── REMOTE_SERVER.md     # 远程服务器文档
 │   ├── did_public/
 │   │   ├── public-did-doc.json
 │   │   └── public-private-key.pem

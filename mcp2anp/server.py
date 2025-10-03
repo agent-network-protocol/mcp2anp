@@ -1,20 +1,18 @@
-"""MCP server implementation for ANP bridge."""
+"""MCP server implementation for ANP bridge (本地 stdio 模式)。"""
 
 import asyncio
 import json
-import os
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Any
 
 import click
 import mcp.server.stdio
 import structlog
-from agent_connect.anp_crawler.anp_crawler import ANPCrawler
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
-from .utils import models, setup_logging
+from .core.handlers import ANPHandler, initialize_anp_crawler
+from .utils import setup_logging
 
 logger = structlog.get_logger(__name__)
 
@@ -33,8 +31,8 @@ ANP网络的入口URL：https://agent-navigation.com/ad.json
 # 创建 MCP Server 实例
 server = Server("mcp2anp", instructions=mcp_instructions)
 
-# 全局状态：ANPCrawler 实例（在启动时初始化）
-anp_crawler: ANPCrawler | None = None
+# 全局状态：ANPHandler 实例（在启动时初始化）
+anp_handler: ANPHandler | None = None
 
 
 @server.list_tools()
@@ -95,13 +93,15 @@ async def list_tools() -> list[Tool]:
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextContent]:
     """处理工具调用。"""
+    global anp_handler
+
     logger.info("Tool called", tool_name=name, args=arguments)
 
     try:
         if name == "anp.fetchDoc":
-            result = await handle_fetch_doc(arguments)
+            result = await anp_handler.handle_fetch_doc(arguments)
         elif name == "anp.invokeOpenRPC":
-            result = await handle_invoke_openrpc(arguments)
+            result = await anp_handler.handle_invoke_openrpc(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
 
@@ -120,176 +120,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
         return [TextContent(type="text", text=json.dumps(error_result, indent=2, ensure_ascii=False))]
 
 
-def initialize_anp_crawler() -> None:
-    """从环境变量初始化 ANPCrawler。"""
-    global anp_crawler
+def initialize_server() -> None:
+    """初始化本地服务器。"""
+    global anp_handler
 
-    # 从环境变量读取 DID 凭证路径
-    did_document_path = os.environ.get("ANP_DID_DOCUMENT_PATH")
-    did_private_key_path = os.environ.get("ANP_DID_PRIVATE_KEY_PATH")
+    anp_crawler = initialize_anp_crawler()
+    anp_handler = ANPHandler(anp_crawler)
 
-    logger.info(
-        "DID credentials from environment variables",
-        did_doc=did_document_path,
-        private_key=did_private_key_path,
-    )
-
-    # 如果环境变量未设置，使用默认的公共 DID 凭证
-    if not did_document_path or not did_private_key_path:
-        project_root = Path(__file__).parent.parent
-        did_document_path = str(project_root / "docs" / "did_public" / "public-did-doc.json")
-        did_private_key_path = str(project_root / "docs" / "did_public" / "public-private-key.pem")
-        logger.info(
-            "Using default DID credentials",
-            did_doc=did_document_path,
-            private_key=did_private_key_path,
-        )
-    else:
-        logger.info(
-            "Using DID credentials from environment variables",
-            did_doc=did_document_path,
-            private_key=did_private_key_path,
-        )
-
-    try:
-        # 创建 ANPCrawler 实例
-        anp_crawler = ANPCrawler(
-            did_document_path=did_document_path,
-            private_key_path=did_private_key_path,
-            cache_enabled=True
-        )
-        logger.info("ANPCrawler initialized successfully")
-    except Exception as e:
-        logger.error("Failed to initialize ANPCrawler", error=str(e))
-        # 继续运行，但工具调用将失败并显示适当的错误消息
-        anp_crawler = None
-
-
-async def handle_fetch_doc(arguments: dict[str, Any]) -> dict[str, Any]:
-    """处理 fetchDoc 工具调用。"""
-    global anp_crawler
-
-    try:
-        # 验证参数
-        request = models.FetchDocRequest(**arguments)
-
-        logger.info("Fetching document", url=request.url)
-
-        # 检查 ANPCrawler 是否已初始化
-        if anp_crawler is None:
-            return {
-                "ok": False,
-                "error": {
-                    "code": "ANP_NOT_INITIALIZED",
-                    "message": "ANPCrawler not initialized. Please check DID credentials.",
-                },
-            }
-
-        # 使用 ANPCrawler 获取文档
-        content_result, interfaces = await anp_crawler.fetch_text(request.url)
-
-        # 构建链接列表
-        links = []
-        for interface in interfaces:
-            func_info = interface.get("function", {})
-            links.append({
-                "rel": "interface",
-                "url": request.url,  # ANPCrawler 已经处理了 URL 解析
-                "title": func_info.get("name", ""),
-                "description": func_info.get("description", ""),
-            })
-
-        result = {
-            "ok": True,
-            "contentType": content_result.get("content_type", "application/json"),
-            "text": content_result.get("content", ""),
-            "links": links,
-        }
-
-        # 如果内容是 JSON，尝试解析
-        try:
-            if content_result.get("content"):
-                json_data = json.loads(content_result["content"])
-                result["json"] = json_data
-        except json.JSONDecodeError:
-            pass  # 不是 JSON 内容，跳过
-
-        logger.info("Document fetched successfully", url=request.url, links_count=len(links))
-        return result
-
-    except Exception as e:
-        logger.error("Failed to fetch document", url=arguments.get("url"), error=str(e))
-        return {
-            "ok": False,
-            "error": {
-                "code": "ANP_FETCH_ERROR",
-                "message": str(e),
-            },
-        }
-
-
-async def handle_invoke_openrpc(arguments: dict[str, Any]) -> dict[str, Any]:
-    """处理 invokeOpenRPC 工具调用。"""
-    global anp_crawler
-
-    try:
-        # 验证参数
-        request = models.InvokeOpenRPCRequest(**arguments)
-
-        logger.info(
-            "Invoking OpenRPC method",
-            endpoint=request.endpoint,
-            method=request.method,
-            params=request.params,
-        )
-
-        # 检查 ANPCrawler 是否已初始化
-        if anp_crawler is None:
-            return {
-                "ok": False,
-                "error": {
-                    "code": "ANP_NOT_INITIALIZED",
-                    "message": "ANPCrawler not initialized. Please check DID credentials.",
-                },
-            }
-
-        # 构建工具名称（ANPCrawler 需要这种格式）
-        tool_name = f"{request.method}"
-
-        # 调用工具
-        if request.params is None:
-            tool_params = {}
-        elif isinstance(request.params, dict):
-            tool_params = request.params
-        elif isinstance(request.params, list):
-            # 如果是列表，转换为字典
-            tool_params = {"args": request.params}
-        else:
-            tool_params = {"value": request.params}
-
-        result = await anp_crawler.execute_tool_call(tool_name, tool_params)
-
-        logger.info("OpenRPC method invoked successfully", method=request.method)
-        return {
-            "ok": True,
-            "result": result,
-            "raw": result,  # ANPCrawler 已经返回结构化结果
-        }
-
-    except Exception as e:
-        logger.error(
-            "Failed to invoke OpenRPC method",
-            endpoint=arguments.get("endpoint"),
-            method=arguments.get("method"),
-            error=str(e),
-        )
-        return {
-            "ok": False,
-            "error": {
-                "code": "ANP_RPC_ERROR",
-                "message": str(e),
-            },
-        }
+    logger.info("Local MCP server initialized")
 
 
 async def run_server():
@@ -315,7 +153,7 @@ async def run_server():
     help="启用开发热重载",
 )
 def main(log_level: str, reload: bool) -> None:
-    """运行 MCP2ANP 桥接服务器。
+    """运行 MCP2ANP 本地桥接服务器（stdio 模式）。
 
     环境变量:
         ANP_DID_DOCUMENT_PATH: DID 文档 JSON 文件路径
@@ -325,13 +163,13 @@ def main(log_level: str, reload: bool) -> None:
     """
     setup_logging(log_level)
 
-    # 初始化 ANPCrawler
-    initialize_anp_crawler()
+    # 初始化服务器
+    initialize_server()
 
     if reload:
-        logger.info("Starting MCP2ANP server with hot reload enabled")
+        logger.info("Starting MCP2ANP local server with hot reload enabled")
     else:
-        logger.info("Starting MCP2ANP server")
+        logger.info("Starting MCP2ANP local server")
 
     try:
         asyncio.run(run_server())

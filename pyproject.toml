@@ -26,6 +26,9 @@ dependencies = [
     "structlog>=23.1.0",
     "mcp>=1.0.0",
     "agent-connect>=0.3.7",
+    "fastapi>=0.104.0",
+    "starlette>=0.27.0",
+    "uvicorn[standard]>=0.24.0",
 ]
 
 [dependency-groups]
@@ -46,7 +49,9 @@ test = [
 ]
 
 [project.scripts]
-mcp2anp = "mcp2anp.server:main"
+mcp2anp = "mcp2anp.__main__:cli"
+mcp2anp-local = "mcp2anp.server:main"
+mcp2anp-remote = "mcp2anp.server_remote:main"
 
 [project.urls]
 Homepage = "https://github.com/example/mcp2anp"
