@@ -76,13 +76,13 @@ uv run python -m mcp2anp.server
 
 ```bash
 # 无鉴权启动
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
 
 # 启用鉴权（使用固定token）
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000 --enable-auth --auth-token your-secret-token
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth --auth-token your-secret-token
 
 # 启用鉴权（使用默认回调，打印token并通过）
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000 --enable-auth
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth
 ```
 
 #### 可选参数
@@ -90,7 +90,7 @@ uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000 --enable-auth
 ```bash
 uv run python -m mcp2anp.server_remote \
   --host 0.0.0.0 \          # 绑定地址（默认: 0.0.0.0）
-  --port 8000 \             # 端口（默认: 8000）
+  --port 9880 \             # 端口（默认: 9880）
   --log-level INFO \        # 日志级别（默认: INFO）
   --enable-auth \           # 启用Bearer Token鉴权（可选）
   --auth-token TOKEN        # 设置固定Bearer Token（可选）
@@ -102,10 +102,10 @@ uv run python -m mcp2anp.server_remote \
 
 ```bash
 # 添加远程 MCP 服务器（无鉴权）
-claude mcp add --transport http mcp2anp-remote http://localhost:8000/mcp
+claude mcp add --transport http mcp2anp-remote http://localhost:9880/mcp
 
 # 添加远程服务器（使用 Bearer Token 鉴权）
-claude mcp add --transport http mcp2anp-remote http://YOUR_IP:8000/mcp \
+claude mcp add --transport http mcp2anp-remote http://YOUR_IP:9880/mcp \
   --header "Authorization: Bearer your-secret-token"
 ```
 
@@ -113,12 +113,12 @@ claude mcp add --transport http mcp2anp-remote http://YOUR_IP:8000/mcp \
 
 ```bash
 # 无鉴权请求
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:9880/mcp \
      -H "Content-Type: application/json" \
      -d '{"method":"anp.fetchDoc","params":{"url":"https://agent-navigation.com/ad.json"}}'
 
 # 使用 Bearer Token 鉴权
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:9880/mcp \
      -H "Authorization: Bearer your-secret-token" \
      -H "Content-Type: application/json" \
      -d '{"method":"anp.fetchDoc","params":{"url":"https://agent-navigation.com/ad.json"}}'
@@ -133,7 +133,7 @@ curl -X POST http://localhost:8000/mcp \
   "mcpServers": {
     "mcp2anp-remote": {
       "command": "npx",
-      "args": ["@modelcontextprotocol/server-http", "http://localhost:8000"],
+      "args": ["@modelcontextprotocol/server-http", "http://localhost:9880"],
       "env": {}
     },
     "secure-mcp2anp": {
@@ -167,7 +167,7 @@ curl -X POST http://localhost:8000/mcp \
 ### 1. 无鉴权模式（默认）
 
 ```bash
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
 ```
 
 此模式下，所有请求都会被接受，适用于本地开发或内网环境。
@@ -175,13 +175,13 @@ uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000
 ### 2. 固定 Token 模式
 
 ```bash
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000 --enable-auth --auth-token my-secret-token
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth --auth-token my-secret-token
 ```
 
 此模式下，只有提供正确 Bearer Token 的请求才会被处理：
 
 ```bash
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:9880/mcp \
      -H "Authorization: Bearer my-secret-token" \
      -H "Content-Type: application/json" \
      -d '{"method":"anp.fetchDoc","params":{"url":"..."}}'
@@ -190,7 +190,7 @@ curl -X POST http://localhost:8000/mcp \
 ### 3. 默认回调模式
 
 ```bash
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000 --enable-auth
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth
 ```
 
 此模式下，启用鉴权但使用默认回调函数，该回调会打印接收到的 token 并通过所有验证，适用于调试。
@@ -239,7 +239,7 @@ LOG_LEVEL=DEBUG
 
 ```bash
 # 启动服务器
-uv run mcp2anp remote --host 0.0.0.0 --port 8000 --log-level DEBUG
+uv run mcp2anp remote --host 0.0.0.0 --port 9880 --log-level DEBUG
 ```
 
 ### 生产环境
@@ -250,7 +250,7 @@ export ANP_DID_DOCUMENT_PATH="/path/to/did-doc.json"
 export ANP_DID_PRIVATE_KEY_PATH="/path/to/private-key.pem"
 
 # 启动服务器
-uv run mcp2anp remote --host 0.0.0.0 --port 8000
+uv run mcp2anp remote --host 0.0.0.0 --port 9880
 ```
 
 ### Docker 部署
@@ -272,17 +272,17 @@ COPY . .
 RUN uv sync
 
 # 暴露端口
-EXPOSE 8000
+EXPOSE 9880
 
 # 启动服务器
-CMD ["uv", "run", "mcp2anp", "remote", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "mcp2anp", "remote", "--host", "0.0.0.0", "--port", "9880"]
 ```
 
 构建和运行：
 
 ```bash
 docker build -t mcp2anp-remote .
-docker run -p 8000:8000 \
+docker run -p 9880:9880 \
   -e ANP_DID_DOCUMENT_PATH=/app/did-doc.json \
   -e ANP_DID_PRIVATE_KEY_PATH=/app/private-key.pem \
   mcp2anp-remote

@@ -43,7 +43,7 @@ def local(log_level: str, reload: bool):
 )
 @click.option(
     "--port",
-    default=8000,
+    default=9880,
     type=int,
     help="服务器端口",
 )

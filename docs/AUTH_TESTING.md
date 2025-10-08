@@ -15,7 +15,7 @@
 
 ```bash
 # 服务器启动命令
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
 ```
 
 **预期行为**：
@@ -26,7 +26,7 @@ uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000
 
 ```bash
 # 服务器启动命令
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000 --enable-auth --auth-token test-secret-token-12345
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth --auth-token test-secret-token-12345
 ```
 
 **预期行为**：
@@ -39,7 +39,7 @@ uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000 --enable-auth 
 
 ```bash
 # 服务器启动命令
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000 --enable-auth
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth
 ```
 
 **预期行为**：
@@ -88,10 +88,10 @@ uv run python examples/test_remote_auth.py
 
 ```bash
 # 启动服务器
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
 
 # 发送请求（不带 Authorization 头）
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:9880/mcp \
      -H "Content-Type: application/json" \
      -H "Accept: application/json, text/event-stream" \
      -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
@@ -101,17 +101,17 @@ curl -X POST http://localhost:8000/mcp \
 
 ```bash
 # 启动服务器（启用鉴权）
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000 --enable-auth --auth-token my-secret-token
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth --auth-token my-secret-token
 
 # 发送请求（带正确的 token）
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:9880/mcp \
      -H "Authorization: Bearer my-secret-token" \
      -H "Content-Type: application/json" \
      -H "Accept: application/json, text/event-stream" \
      -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
 # 发送请求（带错误的 token）
-curl -X POST http://localhost:8000/mcp \
+curl -X POST http://localhost:9880/mcp \
      -H "Authorization: Bearer wrong-token" \
      -H "Content-Type: application/json" \
      -H "Accept: application/json, text/event-stream" \
@@ -125,7 +125,7 @@ curl -X POST http://localhost:8000/mcp \
 ```bash
 # 添加远程服务器（带鉴权）
 claude mcp add --transport http mcp2anp-remote-auth \
-  http://localhost:8000/mcp \
+  http://localhost:9880/mcp \
   --header "Authorization: Bearer my-secret-token"
 
 # 测试工具调用
@@ -216,7 +216,7 @@ if __name__ == "__main__":
 
 **解决方法**：
 - 确认没有使用 `--enable-auth` 参数
-- 检查端口是否被正确的进程占用：`lsof -i :8000`
+- 检查端口是否被正确的进程占用：`lsof -i :9880`
 - 重启服务器
 
 ## 总结

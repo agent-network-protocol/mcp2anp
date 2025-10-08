@@ -25,6 +25,7 @@ ANP网络提供一下的能力：
 - 搜索服务
 
 ANP网络的入口URL：https://agent-navigation.com/ad.json
+
 你可以通过anp.fetchDoc工具，拉取ANP网络生态的资源，并使用anp.invokeOpenRPC调用ANP网络的接口。
 
 请注意，所有ANP网络的资源或接口，必须使用mcp2anp的tools进行处理。
@@ -245,7 +246,7 @@ async def anp_invokeOpenRPC(
 )
 @click.option(
     "--port",
-    default=8000,
+    default=9880,
     type=int,
     help="服务器监听端口",
 )
@@ -284,19 +285,19 @@ def main(host: str, port: int, log_level: str, enable_auth: bool, auth_token: st
 
     使用示例：
         # 启动服务器（无鉴权）
-        uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000
+        uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
 
         # 启动服务器（启用鉴权，使用固定token）
-        uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000 --enable-auth --auth-token my-secret-token
+        uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth --auth-token my-secret-token
 
         # 在 Claude Code 中添加远程服务器（无鉴权）
-        claude mcp add --transport http mcp2anp-remote http://YOUR_IP:8000/mcp
+        claude mcp add --transport http mcp2anp-remote http://YOUR_IP:9880/mcp
 
         # 在 Claude Code 中添加远程服务器（有鉴权）
-        claude mcp add --transport http mcp2anp-remote http://YOUR_IP:8000/mcp --header "Authorization: Bearer my-secret-token"
+        claude mcp add --transport http mcp2anp-remote http://YOUR_IP:9880/mcp --header "Authorization: Bearer my-secret-token"
 
         # 使用 curl 测试（有鉴权）
-        curl -X POST http://YOUR_IP:8000/mcp \\
+        curl -X POST http://YOUR_IP:9880/mcp \\
              -H "Authorization: Bearer my-secret-token" \\
              -H "Content-Type: application/json" \\
              -d '{"method":"anp.fetchDoc","params":{"url":"https://agent-navigation.com/ad.json"}}'
@@ -345,7 +346,7 @@ def main(host: str, port: int, log_level: str, enable_auth: bool, auth_token: st
 if __name__ == "__main__":
     main(
         host="0.0.0.0",
-        port=8000,
+        port=9880,
         enable_auth=True,
         auth_token=None,
         log_level="INFO"

@@ -9,7 +9,7 @@ import httpx
 
 async def test_remote_server():
     """测试远程 MCP 服务器的功能。"""
-    base_url = "http://127.0.0.1:8000"
+    base_url = "http://127.0.0.1:9880"
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         print("=" * 60)

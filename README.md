@@ -86,16 +86,16 @@ uv run mcp2anp local --reload --log-level DEBUG
 
 ```bash
 # 启动远程服务器（无鉴权）
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
 
 # 启动远程服务器（启用鉴权）
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 8000 --enable-auth --auth-token your-secret-token
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth --auth-token your-secret-token
 
 # 在 Claude Code 中添加远程服务器（无鉴权）
-claude mcp add --transport http mcp2anp-remote http://YOUR_IP:8000/mcp
+claude mcp add --transport http mcp2anp-remote http://YOUR_IP:9880/mcp
 
 # 在 Claude Code 中添加远程服务器（有鉴权）
-claude mcp add --transport http mcp2anp-remote http://YOUR_IP:8000/mcp --header "Authorization: Bearer your-secret-token"
+claude mcp add --transport http mcp2anp-remote http://YOUR_IP:9880/mcp --header "Authorization: Bearer your-secret-token"
 ```
 
 详细的远程模式使用方法请参见 [远程服务器文档](docs/REMOTE_SERVER.md)

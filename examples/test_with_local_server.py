@@ -32,7 +32,7 @@ async def test_authenticated_flow():
 
             # 步骤 1: 尝试不带认证访问（应该失败）
             print("步骤 1: 尝试不带认证访问受保护的端点")
-            test_url = "http://localhost:8000/agents/test/ad.json"
+            test_url = "http://localhost:9880/agents/test/ad.json"
             print(f"URL: {test_url}\n")
 
             result = await session.call_tool(
@@ -102,7 +102,7 @@ async def test_authenticated_flow():
             else:
                 print("步骤 3: 跳过（认证失败）")
                 print("\n要成功运行此测试，需要:")
-                print("1. 确保本地 ANP 服务器运行在 http://localhost:8000")
+                print("1. 确保本地 ANP 服务器运行在 http://localhost:9880")
                 print("2. 创建与 DID 文档匹配的私钥文件")
                 print("3. 将私钥保存到 docs/did_public/private-key.pem")
 

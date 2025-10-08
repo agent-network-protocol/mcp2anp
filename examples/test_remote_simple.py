@@ -2,12 +2,13 @@
 """简单的远程 MCP 服务器测试脚本。"""
 
 import json
+
 import requests
 
 
 def test_remote_server():
     """测试远程 MCP 服务器的功能。"""
-    base_url = "http://127.0.0.1:8000"
+    base_url = "http://127.0.0.1:9880"
 
     print("=" * 60)
     print("测试 1: 检查服务器是否运行")

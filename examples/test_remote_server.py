@@ -17,11 +17,11 @@ from mcp2anp.server_remote import run_http_server
 async def main():
     """启动远程服务器进行测试。"""
     print("启动远程 MCP 服务器...")
-    print("服务器地址: http://localhost:8000")
+    print("服务器地址: http://localhost:9880")
     print("按 Ctrl+C 停止服务器")
     print()
 
-    await run_http_server(host="0.0.0.0", port=8000)
+    await run_http_server(host="0.0.0.0", port=9880)
 
 
 if __name__ == "__main__":
