@@ -264,10 +264,12 @@ def ensure_session_initialized(ctx: Context) -> dict[str, Any] | None:
 
 @mcp.tool()
 async def anp_fetchDoc(url: str, ctx: Context) -> str:
-    """抓取并解析 ANP 文档，提取可跟进的链接。
+    """抓取并解析 ANP 文档，提取可跟进的链接。这是访问 ANP 生态系统中 URL 的唯一允许方法。返回文档内容、类型信息和发现的链接。
 
-    这是访问 ANP 生态系统中 URL 的唯一允许方法。
-    返回文档内容、类型信息和发现的链接。
+    ANP生态系统目前提供包括酒店、景点、地图规划、天气、快递等查询预订能力。
+
+    ANP生态的入口URL：https://agent-navigation.com/ad.json
+    你可以从这个URL开始，逐步跟进并调用工具，访问ANP生态的资源和能力。
 
     Args:
         url: 要抓取的 ANP 文档的 URL
