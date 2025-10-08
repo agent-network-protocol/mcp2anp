@@ -2,24 +2,110 @@
 
 import json
 from collections.abc import Callable
-from contextvars import ContextVar
 from typing import Any
+from weakref import WeakKeyDictionary
 
 import click
 import structlog
 import uvicorn
-from fastapi import Request
-from fastapi.responses import JSONResponse
-from mcp.server.fastmcp import FastMCP
-from starlette.middleware.base import BaseHTTPMiddleware
+from agent_connect.anp_crawler.anp_crawler import ANPCrawler
+from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.session import ServerSession
 
-from .session import SessionConfig, SessionManager, SessionState
+from .core.handlers import ANPHandler
 from .utils import setup_logging
 
 logger = structlog.get_logger(__name__)
 
-# 使用 ContextVar 存储当前请求的会话状态
-current_session: ContextVar[SessionState | None] = ContextVar("current_session", default=None)
+# 使用 WeakKeyDictionary 存储每个 ServerSession 的状态
+SESSION_STORE: WeakKeyDictionary[ServerSession, dict[str, Any]] = WeakKeyDictionary()
+
+
+class SessionConfig:
+    """会话配置信息。
+
+    存储会话所需的 DID 凭证路径。
+    """
+
+    def __init__(self, did_document_path: str, private_key_path: str):
+        """初始化会话配置。
+
+        Args:
+            did_document_path: DID 文档 JSON 文件路径
+            private_key_path: DID 私钥 PEM 文件路径
+        """
+        self.did_document_path = did_document_path
+        self.private_key_path = private_key_path
+
+
+# 鉴权回调函数类型定义（接收 token 字符串，返回 SessionConfig 或 None）
+AuthCallback = Callable[[str], SessionConfig | None]
+
+# 全局鉴权回调函数
+_auth_callback: AuthCallback | None = None
+
+
+def get_session_state(session: ServerSession) -> dict[str, Any]:
+    """获取或创建会话状态。
+
+    Args:
+        session: FastMCP 的 ServerSession 实例
+
+    Returns:
+        dict: 会话状态字典
+    """
+    if session not in SESSION_STORE:
+        SESSION_STORE[session] = {}
+    return SESSION_STORE[session]
+
+
+def initialize_session(session: ServerSession, config: SessionConfig) -> None:
+    """初始化会话的 ANPCrawler 和 ANPHandler。
+
+    Args:
+        session: FastMCP 的 ServerSession 实例
+        config: 会话配置
+
+    Raises:
+        Exception: 初始化失败时抛出异常
+    """
+    state = get_session_state(session)
+
+    # 如果已初始化，则跳过
+    if "initialized" in state and state["initialized"]:
+        logger.info("Session already initialized", session_id=id(session))
+        return
+
+    try:
+        logger.info(
+            "Initializing session",
+            session_id=id(session),
+            did_doc=config.did_document_path,
+            private_key=config.private_key_path,
+        )
+
+        # 创建 ANPCrawler 实例
+        anp_crawler = ANPCrawler(
+            did_document_path=config.did_document_path,
+            private_key_path=config.private_key_path,
+            cache_enabled=True
+        )
+
+        # 创建 ANPHandler 实例
+        anp_handler = ANPHandler(anp_crawler)
+
+        # 存储到会话状态
+        state["anp_crawler"] = anp_crawler
+        state["anp_handler"] = anp_handler
+        state["config"] = config
+        state["initialized"] = True
+
+        logger.info("Session initialized successfully", session_id=id(session))
+
+    except Exception as e:
+        logger.error("Failed to initialize session", session_id=id(session), error=str(e))
+        raise
+
 
 mcp_instructions = """这是一个ANP网络的MCP服务器，通过这个服务器，你就能够访问ANP网络的资源和接口。
 ANP网络提供一下的能力：
@@ -38,44 +124,13 @@ ANP网络的入口URL：https://agent-navigation.com/ad.json
 # 创建 FastMCP Server 实例
 mcp = FastMCP("mcp2anp", instructions=mcp_instructions)
 
-# 全局会话管理器（在 main 函数中初始化）
-session_manager: SessionManager | None = None
 
-# 鉴权回调函数类型定义（返回 SessionConfig 或 None）
-AuthCallback = Callable[[str], SessionConfig | None]
-
-# 全局鉴权回调函数
-auth_callback: AuthCallback | None = None
-
-
-def initialize_server() -> None:
-    """初始化远程服务器（有状态模式下不需要全局初始化）。"""
-    logger.info("Remote MCP server initialized (stateful mode)")
-
-
-def set_auth_callback(callback: AuthCallback) -> None:
-    """设置鉴权回调函数。
-
-    Args:
-        callback: 鉴权回调函数，接收token字符串，返回SessionConfig或None
-    """
-    global auth_callback
-    auth_callback = callback
-    logger.info("Auth callback set")
-
-
-def default_auth_callback(token: str) -> SessionConfig | None:
-    """默认鉴权回调函数，使用默认的公共 DID 凭证。
-
-    Args:
-        token: Bearer Token
+def get_default_config() -> SessionConfig:
+    """获取默认的会话配置（使用公共 DID 凭证）。
 
     Returns:
-        SessionConfig: 使用默认公共 DID 凭证的配置
+        SessionConfig: 默认配置
     """
-    logger.info("Default auth callback called", token=token)
-
-    # 使用默认的公共 DID 凭证
     from pathlib import Path
     project_root = Path(__file__).parent.parent
     did_document_path = str(project_root / "docs" / "did_public" / "public-did-doc.json")
@@ -87,151 +142,128 @@ def default_auth_callback(token: str) -> SessionConfig | None:
     )
 
 
-async def authenticate_request(request: Request) -> tuple[bool, SessionConfig | None]:
-    """验证请求的鉴权头并返回会话配置。
+def default_auth_callback(token: str) -> SessionConfig | None:
+    """默认鉴权回调函数，使用默认的公共 DID 凭证。
 
     Args:
-        request: FastAPI 请求对象
+        token: Bearer Token（本实现中不验证 token，总是返回默认配置）
 
     Returns:
-        tuple[bool, SessionConfig | None]: (是否通过验证, 会话配置)
+        SessionConfig: 使用默认公共 DID 凭证的配置
     """
-    # 获取 Authorization 头
-    auth_header = request.headers.get("Authorization")
+    logger.info("Default auth callback called", token=token[:10] + "..." if len(token) > 10 else token)
+    return get_default_config()
 
+
+def set_auth_callback(callback: AuthCallback | None) -> None:
+    """设置自定义鉴权回调函数。
+
+    Args:
+        callback: 鉴权回调函数，接收 token 字符串，返回 SessionConfig 或 None。
+                 如果返回 None，表示鉴权失败。
+                 如果设置为 None，则使用默认鉴权回调。
+
+    Example:
+        def my_auth_callback(token: str) -> SessionConfig | None:
+            if token == "my-secret-token":
+                return SessionConfig(
+                    did_document_path="/path/to/did.json",
+                    private_key_path="/path/to/key.pem"
+                )
+            return None  # 鉴权失败
+
+        set_auth_callback(my_auth_callback)
+    """
+    global _auth_callback
+    _auth_callback = callback
+    logger.info("Auth callback set", has_callback=callback is not None)
+
+
+def authenticate_and_get_config(ctx: Context) -> SessionConfig | None:
+    """从 Context 中提取 Authorization 头并进行鉴权。
+
+    Args:
+        ctx: FastMCP 上下文对象
+
+    Returns:
+        SessionConfig | None: 鉴权成功返回配置，失败返回 None
+    """
+    # 尝试从 Context 的 request_context 中获取 Authorization 头
+    auth_header = None
+    if hasattr(ctx, "request_context") and ctx.request_context:
+        # FastMCP 的 request_context 可能包含 HTTP 头信息
+        if isinstance(ctx.request_context, dict):
+            auth_header = ctx.request_context.get("authorization") or ctx.request_context.get("Authorization")
+
+    # 如果没有 Authorization 头，使用默认鉴权
     if not auth_header:
-        logger.warning("No Authorization header provided")
-        # 如果没有设置鉴权回调，使用默认配置
-        if auth_callback is None:
-            logger.info("No auth callback set, using default config")
-            return True, default_auth_callback("")
-        else:
-            logger.error("Auth callback set but no Authorization header provided")
-            return False, None
+        logger.info("No Authorization header found, using default auth")
+        callback = _auth_callback or default_auth_callback
+        return callback("")
 
     # 检查 Bearer Token 格式
     if not auth_header.startswith("Bearer "):
-        logger.error("Invalid Authorization header format", header=auth_header)
-        return False, None
+        logger.warning("Invalid Authorization header format", header=auth_header[:20])
+        return None
 
     # 提取 token
-    token = auth_header[7:]  # 移除 "Bearer " 前缀
+    token = auth_header[7:].strip()
 
     if not token:
-        logger.error("Empty Bearer token")
-        return False, None
+        logger.warning("Empty Bearer token")
+        return None
 
     # 调用鉴权回调函数
-    if auth_callback:
-        try:
-            config = auth_callback(token)
-            if config is None:
-                logger.error("Auth callback returned None (authentication failed)")
-                return False, None
-            logger.info("Auth callback succeeded")
-            return True, config
-        except Exception as e:
-            logger.error("Auth callback execution failed", error=str(e))
-            return False, None
-    else:
-        # 如果没有设置鉴权回调，使用默认实现
-        config = default_auth_callback(token)
-        return True, config
+    callback = _auth_callback or default_auth_callback
+    try:
+        config = callback(token)
+        if config is None:
+            logger.warning("Auth callback returned None (authentication failed)")
+        else:
+            logger.info("Authentication succeeded")
+        return config
+    except Exception as e:
+        logger.error("Auth callback execution failed", error=str(e))
+        return None
 
 
-class AuthMiddleware(BaseHTTPMiddleware):
-    """鉴权和会话管理中间件。"""
+def ensure_session_initialized(ctx: Context) -> dict[str, Any] | None:
+    """确保会话已初始化，如果未初始化则进行鉴权并初始化。
 
-    async def dispatch(self, request: Request, call_next):
-        """处理请求鉴权和会话管理。
+    Args:
+        ctx: FastMCP 上下文对象
 
-        Args:
-            request: FastAPI 请求对象
-            call_next: 下一个中间件或路由处理器
+    Returns:
+        dict | None: 会话状态字典，如果鉴权失败返回 None
+    """
+    # 获取会话状态
+    state = get_session_state(ctx.session)
 
-        Returns:
-            响应对象
-        """
-        # 只对 MCP 端点进行鉴权和会话管理
-        if request.url.path.startswith("/mcp"):
-            # 检查是否已有会话 ID
-            session_id = request.headers.get("Mcp-Session-Id")
+    # 如果已初始化，直接返回
+    if state.get("initialized"):
+        return state
 
-            if session_id:
-                # 验证会话是否存在
-                session_state = session_manager.get_session(session_id)
-                if session_state:
-                    logger.info("Using existing session", session_id=session_id)
-                    # 将会话状态存储到请求状态中供工具使用
-                    request.state.session_state = session_state
-                    # 设置到 ContextVar
-                    current_session.set(session_state)
-                else:
-                    logger.warning("Invalid session ID", session_id=session_id)
-                    return JSONResponse(
-                        status_code=401,
-                        content={
-                            "error": {
-                                "code": "INVALID_SESSION",
-                                "message": "Session not found or expired"
-                            }
-                        },
-                    )
-            else:
-                # 新连接，进行鉴权并创建会话
-                is_authenticated, config = await authenticate_request(request)
+    # 未初始化，进行鉴权
+    logger.info("Session not initialized, authenticating", session_id=id(ctx.session))
+    config = authenticate_and_get_config(ctx)
 
-                if not is_authenticated or config is None:
-                    logger.error("Authentication failed for request", path=request.url.path)
-                    return JSONResponse(
-                        status_code=401,
-                        content={
-                            "error": {
-                                "code": "AUTHENTICATION_FAILED",
-                                "message": "Authentication failed"
-                            }
-                        },
-                    )
+    if config is None:
+        logger.error("Authentication failed", session_id=id(ctx.session))
+        return None
 
-                # 创建新会话
-                try:
-                    session_id = session_manager.create_session(config)
-                    session_state = session_manager.get_session(session_id)
-                    request.state.session_state = session_state
-                    request.state.new_session_id = session_id
-                    # 设置到 ContextVar
-                    current_session.set(session_state)
-                    logger.info("Created new session", session_id=session_id)
-                except Exception as e:
-                    logger.error("Failed to create session", error=str(e))
-                    return JSONResponse(
-                        status_code=500,
-                        content={
-                            "error": {
-                                "code": "SESSION_CREATION_FAILED",
-                                "message": str(e)
-                            }
-                        },
-                    )
+    # 初始化会话
+    try:
+        initialize_session(ctx.session, config)
+        return get_session_state(ctx.session)
+    except Exception as e:
+        logger.error("Session initialization failed", session_id=id(ctx.session), error=str(e))
+        return None
 
-        # 继续处理请求
-        response = await call_next(request)
 
-        # 清理 ContextVar
-        current_session.set(None)
-
-        # 如果是新会话，在响应头中返回会话 ID
-        if hasattr(request.state, "new_session_id"):
-            response.headers["Mcp-Session-Id"] = request.state.new_session_id
-            # CORS 需要显式暴露该头
-            response.headers["Access-Control-Expose-Headers"] = "Mcp-Session-Id"
-            logger.info("Session ID added to response", session_id=request.state.new_session_id)
-
-        return response
 
 
 @mcp.tool()
-async def anp_fetchDoc(url: str) -> str:
+async def anp_fetchDoc(url: str, ctx: Context) -> str:
     """抓取并解析 ANP 文档，提取可跟进的链接。
 
     这是访问 ANP 生态系统中 URL 的唯一允许方法。
@@ -239,26 +271,39 @@ async def anp_fetchDoc(url: str) -> str:
 
     Args:
         url: 要抓取的 ANP 文档的 URL
+        ctx: FastMCP 上下文对象
 
     Returns:
         JSON 格式的结果字符串
     """
-    logger.info("Tool called", tool_name="anp.fetchDoc", url=url)
+    logger.info("Tool called", tool_name="anp.fetchDoc", url=url, session_id=id(ctx.session))
 
     try:
-        # 从 ContextVar 获取当前会话
-        session_state = current_session.get()
-        if session_state is None or session_state.anp_handler is None:
+        # 确保会话已初始化（包含鉴权）
+        state = ensure_session_initialized(ctx)
+
+        if state is None:
             error_result = {
                 "ok": False,
                 "error": {
-                    "code": "NO_SESSION",
-                    "message": "No active session found. Please authenticate first."
+                    "code": "AUTHENTICATION_FAILED",
+                    "message": "Authentication failed. Please provide valid credentials."
                 }
             }
             return json.dumps(error_result, indent=2, ensure_ascii=False)
 
-        result = await session_state.anp_handler.handle_fetch_doc({"url": url})
+        anp_handler = state.get("anp_handler")
+        if anp_handler is None:
+            error_result = {
+                "ok": False,
+                "error": {
+                    "code": "SESSION_NOT_INITIALIZED",
+                    "message": "Session handler not available"
+                }
+            }
+            return json.dumps(error_result, indent=2, ensure_ascii=False)
+
+        result = await anp_handler.handle_fetch_doc({"url": url})
         return json.dumps(result, indent=2, ensure_ascii=False)
     except Exception as e:
         logger.error("Tool execution failed", tool_name="anp.fetchDoc", error=str(e))
@@ -276,8 +321,9 @@ async def anp_fetchDoc(url: str) -> str:
 async def anp_invokeOpenRPC(
     endpoint: str,
     method: str,
+    ctx: Context,
     params: Any = None,
-    id: str = None
+    request_id: str = None
 ) -> str:
     """使用 JSON-RPC 2.0 协议调用 OpenRPC 端点上的方法。
 
@@ -286,8 +332,9 @@ async def anp_invokeOpenRPC(
     Args:
         endpoint: OpenRPC 端点 URL
         method: 要调用的 RPC 方法名称
+        ctx: FastMCP 上下文对象
         params: 传递给方法的参数（可选）
-        id: 用于跟踪的可选请求 ID
+        request_id: 用于跟踪的可选请求 ID
 
     Returns:
         JSON 格式的结果字符串
@@ -298,25 +345,37 @@ async def anp_invokeOpenRPC(
     }
     if params is not None:
         arguments["params"] = params
-    if id is not None:
-        arguments["id"] = id
+    if request_id is not None:
+        arguments["id"] = request_id
 
-    logger.info("Tool called", tool_name="anp.invokeOpenRPC", args=arguments)
+    logger.info("Tool called", tool_name="anp.invokeOpenRPC", args=arguments, session_id=id(ctx.session))
 
     try:
-        # 从 ContextVar 获取当前会话
-        session_state = current_session.get()
-        if session_state is None or session_state.anp_handler is None:
+        # 确保会话已初始化（包含鉴权）
+        state = ensure_session_initialized(ctx)
+
+        if state is None:
             error_result = {
                 "ok": False,
                 "error": {
-                    "code": "NO_SESSION",
-                    "message": "No active session found. Please authenticate first."
+                    "code": "AUTHENTICATION_FAILED",
+                    "message": "Authentication failed. Please provide valid credentials."
                 }
             }
             return json.dumps(error_result, indent=2, ensure_ascii=False)
 
-        result = await session_state.anp_handler.handle_invoke_openrpc(arguments)
+        anp_handler = state.get("anp_handler")
+        if anp_handler is None:
+            error_result = {
+                "ok": False,
+                "error": {
+                    "code": "SESSION_NOT_INITIALIZED",
+                    "message": "Session handler not available"
+                }
+            }
+            return json.dumps(error_result, indent=2, ensure_ascii=False)
+
+        result = await anp_handler.handle_invoke_openrpc(arguments)
         return json.dumps(result, indent=2, ensure_ascii=False)
     except Exception as e:
         logger.error("Tool execution failed", tool_name="anp.invokeOpenRPC", error=str(e))
@@ -348,150 +407,53 @@ async def anp_invokeOpenRPC(
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
     help="设置日志级别",
 )
-@click.option(
-    "--enable-auth",
-    is_flag=True,
-    default=False,
-    help="启用Bearer Token鉴权（需要Authorization头）",
-)
-@click.option(
-    "--auth-token",
-    default=None,
-    help="设置简单的固定Bearer Token（用于测试）",
-)
-@click.option(
-    "--session-timeout",
-    default=30,
-    type=int,
-    help="会话超时时间（秒），默认 30 秒",
-)
-@click.option(
-    "--cleanup-interval",
-    default=300,
-    type=int,
-    help="会话清理任务执行间隔（秒），默认 300 秒（5 分钟）",
-)
 def main(
     host: str,
     port: int,
     log_level: str,
-    enable_auth: bool,
-    auth_token: str,
-    session_timeout: int,
-    cleanup_interval: int
 ) -> None:
-    """运行 MCP2ANP 远程桥接服务器（HTTP 模式，有状态会话）。
+    """运行 MCP2ANP 远程桥接服务器（HTTP 模式，使用 FastMCP 会话管理）。
 
     环境变量:
         ANP_DID_DOCUMENT_PATH: DID 文档 JSON 文件路径（可选，默认使用公共凭证）
         ANP_DID_PRIVATE_KEY_PATH: DID 私钥 PEM 文件路径（可选，默认使用公共凭证）
 
     会话管理:
-        服务器使用 Mcp-Session-Id 头进行会话管理：
-        1. 首次连接时，服务器进行鉴权并创建会话，返回 Mcp-Session-Id
-        2. 后续请求携带该头，服务器将复用会话状态（ANPCrawler 和 ANPHandler）
-        3. 每个会话拥有独立的 DID 凭证和状态
-
-    鉴权说明:
-        默认情况下，服务器不启用鉴权，使用默认公共 DID 凭证。
-        使用 --enable-auth 启用鉴权后：
-        1. 如果设置了 --auth-token，将验证请求的 token 是否匹配
-        2. 如果没有设置 --auth-token，将使用默认回调（使用公共凭证）
-        3. 也可以通过 set_auth_callback() 设置自定义鉴权逻辑
-           自定义回调应返回 SessionConfig(did_document_path, private_key_path)
+        服务器使用 FastMCP 内置的会话管理机制：
+        1. 每个客户端连接都有独立的 ServerSession 实例
+        2. 每个会话自动创建独立的 ANPCrawler 和 ANPHandler
+        3. 使用 WeakKeyDictionary 管理会话状态，自动释放内存
+        4. 默认使用公共 DID 凭证
 
     使用示例：
-        # 启动服务器（无鉴权，使用默认公共凭证）
+        # 启动服务器
         uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
 
-        # 启动服务器（启用鉴权，使用固定token）
-        uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth --auth-token my-secret-token
-
-        # 在 Claude Code 中添加远程服务器（无鉴权）
+        # 在 Claude Code 中添加远程服务器
         claude mcp add --transport http mcp2anp-remote http://YOUR_IP:9880/mcp
 
-        # 在 Claude Code 中添加远程服务器（有鉴权）
-        claude mcp add --transport http mcp2anp-remote http://YOUR_IP:9880/mcp --header "Authorization: Bearer my-secret-token"
-
-        # 使用 curl 测试（首次请求）
+        # 使用 curl 测试
         curl -X POST http://YOUR_IP:9880/mcp \\
-             -H "Authorization: Bearer my-secret-token" \\
              -H "Content-Type: application/json" \\
-             -d '{"method":"anp.fetchDoc","params":{"url":"https://agent-navigation.com/ad.json"}}' \\
-             -i  # 查看响应头中的 Mcp-Session-Id
-
-        # 后续请求携带会话 ID
-        curl -X POST http://YOUR_IP:9880/mcp \\
-             -H "Mcp-Session-Id: <session-id-from-first-response>" \\
-             -H "Content-Type: application/json" \\
-             -d '{"method":"anp.invokeOpenRPC","params":{...}}'
+             -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"anp_fetchDoc","arguments":{"url":"https://agent-navigation.com/ad.json"}},"id":1}'
     """
     setup_logging(log_level)
 
-    # 初始化服务器
-    initialize_server()
-
-    # 配置鉴权
-    if enable_auth:
-        if auth_token:
-            # 使用固定 token 的简单鉴权
-            def simple_auth_callback(token: str) -> SessionConfig | None:
-                is_valid = token == auth_token
-                logger.info("Simple auth callback called", token=token, valid=is_valid)
-                if is_valid:
-                    return default_auth_callback(token)
-                return None
-            set_auth_callback(simple_auth_callback)
-            logger.info("Authentication enabled with fixed token")
-        else:
-            # 使用默认鉴权回调（使用公共凭证）
-            set_auth_callback(default_auth_callback)
-            logger.info("Authentication enabled with default callback (public credentials)")
-    else:
-        logger.info("Authentication disabled (using default public credentials)")
-
-    # 配置会话管理器的超时参数
-    global session_manager
-    session_manager = SessionManager(timeout=session_timeout, cleanup_interval=cleanup_interval)
-
     logger.info(
-        "Starting MCP2ANP remote server (stateful mode)",
+        "Starting MCP2ANP remote server (FastMCP session management)",
         host=host,
         port=port,
-        auth_enabled=enable_auth,
-        session_timeout=session_timeout,
-        cleanup_interval=cleanup_interval
     )
 
     try:
         # 使用 uvicorn 运行 FastMCP 的 Streamable HTTP app
         app = mcp.streamable_http_app()
 
-        # 添加会话管理中间件（总是需要，用于管理会话状态）
-        app.add_middleware(AuthMiddleware)
-        logger.info("Session management middleware added")
-
-        # 添加启动事件处理器来启动清理任务
-        @app.on_event("startup")
-        async def startup_event():
-            """服务器启动时启动清理任务。"""
-            session_manager.start_cleanup_task()
-            logger.info("Cleanup task started on server startup")
-
-        # 添加关闭事件处理器来停止清理任务
-        @app.on_event("shutdown")
-        async def shutdown_event():
-            """服务器关闭时停止清理任务。"""
-            session_manager.stop_cleanup_task()
-            logger.info("Cleanup task stopped on server shutdown")
-
         uvicorn.run(app, host=host, port=port, log_level=log_level.lower())
     except KeyboardInterrupt:
         logger.info("Server shutdown requested")
-        session_manager.stop_cleanup_task()
     except Exception as e:
         logger.error("Server error", error=str(e))
-        session_manager.stop_cleanup_task()
         raise
 
 
