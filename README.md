@@ -98,6 +98,12 @@ claude mcp add --transport http mcp2anp-remote http://YOUR_IP:9880/mcp
 claude mcp add --transport http mcp2anp-remote http://YOUR_IP:9880/mcp --header "Authorization: Bearer your-secret-token"
 ```
 
+我们在服务端部署了一个MCP server，可以使用下面的命令直接体验：
+
+```bash
+claude mcp add --transport http mcp2anp-remote https://agent-connect.ai/mcp2anp/mcp
+```
+
 详细的远程模式使用方法请参见 [远程服务器文档](docs/REMOTE_SERVER.md)
 
 ### 运行官方 Demo（推荐）
