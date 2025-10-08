@@ -114,7 +114,7 @@ ANP网络提供一下的能力：
 - 天气、快递等查询
 - 搜索服务
 
-ANP网络的入口URL：https://agent-navigation.com/ad.json
+ANP网络的入口URL：https://agent-navigation.com/ad.json，你可以从这个URL开始，逐步跟进并调用工具，访问ANP网络的资源和能力。
 
 你可以通过anp.fetchDoc工具，拉取ANP网络生态的资源，并使用anp.invokeOpenRPC调用ANP网络的接口。
 
