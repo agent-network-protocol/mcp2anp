@@ -2,7 +2,7 @@
 # ANP Bridge for MCP —— 实现文档
 
 > 让任何支持 **MCP** 的应用，像"本地工具"一样访问 **ANP** 智能体
-> 基于 **FastMCP** 构建真正的 MCP 服务器，提供三个核心工具：**设置认证**、**爬取文档** + **调用接口**
+> 基于 **FastMCP** 构建真正的 MCP 服务器，提供两个核心工具：**抓取文档** + **调用接口**
 
 ---
 
@@ -28,11 +28,11 @@
 ---
 
 ## 3. 方案（Solution）
-**基于 FastMCP 构建真正的 MCP 服务器**，提供三个核心工具：
-- `anp.setAuth`：设置 DID 认证上下文（使用本地 DID 文档和私钥文件）
+**基于 FastMCP 构建真正的 MCP 服务器**，提供两个核心工具：
 - `anp.fetchDoc`：**唯一**允许的 URL 访问入口（抓取/解析 ANP 文档，抽取可跟进链接）
 - `anp.invokeOpenRPC`：对 **OpenRPC** 端点发起方法调用（统一错误模型与返回结构）
 
+服务器启动时会通过环境变量（或默认内置凭证）加载 DID 认证上下文，为所有工具调用提供签名能力。
 **技术架构**：
 - 使用标准 `mcp` 库创建 MCP 服务器
 - 通过 `@server.list_tools()` 和 `@server.call_tool()` 装饰器实现工具
@@ -53,11 +53,10 @@ flowchart LR
 
     subgraph MCP2ANP Server
       MCPClient -->|stdio transport| MCPServer[MCP Server]
-      MCPServer -->|@server.call_tool| T0[anp.setAuth]
       MCPServer -->|@server.call_tool| T1[anp.fetchDoc]
       MCPServer -->|@server.call_tool| T2[anp.invokeOpenRPC]
 
-      T0 --> SessionMgr[Session Manager]
+      EnvCreds[环境变量/默认凭证] --> SessionMgr[Credential Manager]
       T1 --> ANPClient[ANP Client]
       T2 --> OpenRPCAdapter[OpenRPC Adapter]
 
@@ -81,19 +80,15 @@ flowchart LR
 
 ```mermaid
 sequenceDiagram
+  participant Env as 配置
   participant App as Claude Desktop/Cursor
   participant MCP as MCP Server
   participant Session as Session Manager
   participant ANP as ANP Agent (Hotel)
 
+  Env->>Session: 加载 DID 凭证（环境变量或默认值）
   App->>MCP: 连接到 MCP 服务器 (stdio)
   MCP-->>App: 返回可用工具列表 (list_tools)
-
-  App->>MCP: anp.setAuth(didDocumentPath, didPrivateKeyPath)
-  MCP->>Session: 加载 DID 文档和私钥
-  Session->>Session: 验证 DID 身份
-  Session-->>MCP: 设置认证上下文
-  MCP-->>App: {ok: true}
 
   App->>MCP: anp.fetchDoc(agent-description-url)
   MCP->>Session: 获取认证头
@@ -118,24 +113,25 @@ sequenceDiagram
 
 ## 7. MCP Tools 规范（MVP）
 
-### 7.1 `anp.setAuth`（可选，推荐）
+### 7.1 DID 凭证配置（启动阶段）
 
-**用途**：为某 DID/域名写入授权上下文（如 DIDWBA token），后续调用自动注入
+**用途**：在服务器启动时为 ANPCrawler 注入 DID 凭证，供所有工具调用复用。
 
-* **输入**
+* **配置方式**
 
-```json
-{
-  "didDocumentPath":"docs/public-did-doc.json",
-  "didPrivateKeyPath":"docs/public-private-key.pem"
-}
+```bash
+export ANP_DID_DOCUMENT_PATH="docs/did_public/public-did-doc.json"
+export ANP_DID_PRIVATE_KEY_PATH="docs/did_public/public-private-key.pem"
+uv run python -m mcp2anp.server
 ```
 
-* **输出**
+未设置时，服务器会退回到 `docs/did_public/` 内置的公共凭证。
 
-```json
-{ "ok": true }
-```
+* **行为说明**
+
+- 凭证仅在进程启动时读取一次
+- 所有工具调用自动复用该上下文
+- 远程服务器可以通过 `set_auth_callback` 自定义按会话加载不同凭证
 
 ---
 
@@ -262,4 +258,3 @@ uv run python -m mcp2anp.server --log-level DEBUG
 - DID 身份鉴权：参考 `examples/did-auth/` 目录
 - 数据爬取：参考 `examples/fetch-data/` 目录
 - 工具实现：查看 `mcp2anp/tools/` 目录
-

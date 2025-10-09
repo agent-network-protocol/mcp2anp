@@ -75,86 +75,44 @@ uv run python -m mcp2anp.server
 #### 启动服务器
 
 ```bash
-# 无鉴权启动
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
-
-# 启用鉴权（使用固定token）
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth --auth-token your-secret-token
-
-# 启用鉴权（使用默认回调，打印token并通过）
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --log-level INFO
 ```
 
-#### 可选参数
+`server_remote.py` 基于 FastMCP 的 `streamable_http_app`，默认对所有请求开放，并与本地模式共享相同的 DID 凭证加载逻辑（环境变量 > 默认公共凭证）。
 
-```bash
-uv run python -m mcp2anp.server_remote \
-  --host 0.0.0.0 \          # 绑定地址（默认: 0.0.0.0）
-  --port 9880 \             # 端口（默认: 9880）
-  --log-level INFO \        # 日志级别（默认: INFO）
-  --enable-auth \           # 启用Bearer Token鉴权（可选）
-  --auth-token TOKEN        # 设置固定Bearer Token（可选）
-```
+#### 常用参数
+
+| 参数 | 说明 | 默认值 |
+| ---- | ---- | ------ |
+| `--host` | 绑定地址 | `0.0.0.0` |
+| `--port` | 监听端口 | `9880` |
+| `--log-level` | 日志级别 (`DEBUG/INFO/WARNING/ERROR`) | `INFO` |
+
+> 需要更严格的访问控制时，可通过 `set_auth_callback` 编程方式扩展，详见下文“鉴权机制”。
 
 ## 在 Claude Code 中配置
 
 ### 使用 HTTP 传输
 
 ```bash
-# 添加远程 MCP 服务器（无鉴权）
 claude mcp add --transport http mcp2anp-remote http://localhost:9880/mcp
-
-# 添加远程服务器（使用 Bearer Token 鉴权）
-claude mcp add --transport http mcp2anp-remote http://YOUR_IP:9880/mcp \
-  --header "Authorization: Bearer your-secret-token"
 ```
+
+如对外开放的实例启用了自定义鉴权回调，可按需添加 `--header "Authorization: Bearer <token>"` 等额外参数与之配合。
 
 ### 使用 curl 测试
 
 ```bash
-# 无鉴权请求
 curl -X POST http://localhost:9880/mcp \
      -H "Content-Type: application/json" \
-     -d '{"method":"anp.fetchDoc","params":{"url":"https://agent-navigation.com/ad.json"}}'
-
-# 使用 Bearer Token 鉴权
-curl -X POST http://localhost:9880/mcp \
-     -H "Authorization: Bearer your-secret-token" \
-     -H "Content-Type: application/json" \
-     -d '{"method":"anp.fetchDoc","params":{"url":"https://agent-navigation.com/ad.json"}}'
-```
-
-### 配置示例
-
-在 Claude Desktop 的 MCP 配置文件中：
-
-```json
-{
-  "mcpServers": {
-    "mcp2anp-remote": {
-      "command": "npx",
-      "args": ["@modelcontextprotocol/server-http", "http://localhost:9880"],
-      "env": {}
-    },
-    "secure-mcp2anp": {
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-http",
-        "https://your-server.com/mcp",
-        "--header",
-        "Authorization: Bearer your-token"
-      ],
-      "env": {}
-    }
-  }
-}
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"anp_fetchDoc","arguments":{"url":"https://agent-navigation.com/ad.json"}}}'
 ```
 
 ## 服务器特性
 
 - **标准 MCP 协议**: 使用官方 MCP SDK，兼容所有 MCP 客户端
 - **HTTP 传输**: 支持远程访问，无需本地安装
-- **Bearer Token 鉴权**: 支持可选的 Bearer Token 鉴权，可自定义鉴权回调
+- **可扩展鉴权**: 通过 `set_auth_callback` 可自定义 Bearer Token、JWT 等验证策略
 - **工具支持**:
   - `anp.fetchDoc`: 抓取并解析 ANP 文档
   - `anp.invokeOpenRPC`: 调用 OpenRPC 端点
@@ -162,65 +120,73 @@ curl -X POST http://localhost:9880/mcp \
 
 ## 鉴权机制
 
-远程服务器支持可选的 Bearer Token 鉴权，提供三种工作模式：
+默认情况下，远程服务器允许所有请求并使用公共 DID 凭证。若需要控制访问，可在启动前调用 `set_auth_callback()` 注册自定义回调，通过 `Authorization: Bearer <token>` 头验证请求并按需返回不同的 `SessionConfig`。
 
-### 1. 无鉴权模式（默认）
+### 固定 Token 示例
 
-```bash
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
+```python
+# scripts/remote_server_with_auth.py
+from mcp2anp.server_remote import (
+    SessionConfig,
+    set_auth_callback,
+    main as remote_main,
+)
+
+def fixed_token_auth(token: str) -> SessionConfig | None:
+    if token == "my-secret-token":
+        return SessionConfig(
+            did_document_path="docs/did_public/public-did-doc.json",
+            private_key_path="docs/did_public/public-private-key.pem",
+        )
+    return None
+
+if __name__ == "__main__":
+    set_auth_callback(fixed_token_auth)
+    remote_main()
 ```
 
-此模式下，所有请求都会被接受，适用于本地开发或内网环境。
-
-### 2. 固定 Token 模式
+运行：
 
 ```bash
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth --auth-token my-secret-token
+uv run python scripts/remote_server_with_auth.py --host 0.0.0.0 --port 9880
 ```
 
-此模式下，只有提供正确 Bearer Token 的请求才会被处理：
+请求示例：
 
 ```bash
 curl -X POST http://localhost:9880/mcp \
      -H "Authorization: Bearer my-secret-token" \
      -H "Content-Type: application/json" \
-     -d '{"method":"anp.fetchDoc","params":{"url":"..."}}'
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"anp_fetchDoc","arguments":{"url":"https://agent-navigation.com/ad.json"}}}'
 ```
 
-### 3. 默认回调模式
-
-```bash
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth
-```
-
-此模式下，启用鉴权但使用默认回调函数，该回调会打印接收到的 token 并通过所有验证，适用于调试。
-
-### 4. 自定义回调模式
-
-对于更复杂的鉴权需求，可以通过编程方式设置自定义鉴权回调：
+### 多租户示例
 
 ```python
-from mcp2anp.server_remote import set_auth_callback
+from mcp2anp.server_remote import SessionConfig, set_auth_callback
 
-def custom_auth(token: str) -> bool:
-    # 自定义鉴权逻辑
-    # 例如：从数据库验证token
-    return validate_token_from_database(token)
+def multi_tenant_auth(token: str) -> SessionConfig | None:
+    tenant_credentials = {
+        "tenant-a": SessionConfig(
+            did_document_path="/secure/tenant-a/did.json",
+            private_key_path="/secure/tenant-a/key.pem",
+        ),
+        "tenant-b": SessionConfig(
+            did_document_path="/secure/tenant-b/did.json",
+            private_key_path="/secure/tenant-b/key.pem",
+        ),
+    }
+    return tenant_credentials.get(token)
 
-set_auth_callback(custom_auth)
+set_auth_callback(multi_tenant_auth)
 ```
 
-### 鉴权工作流程
+### 工作流程
 
-1. 客户端发送请求时，在 `Authorization` 头中包含 Bearer Token
-2. 服务器提取 token 并调用鉴权回调函数
-3. 如果鉴权通过，处理请求并返回结果
-4. 如果鉴权失败，返回 `AUTHENTICATION_FAILED` 错误
-
-### 无鉴权头的处理
-
-- **未启用鉴权**（无 `--enable-auth`）：允许无鉴权头的请求
-- **已启用鉴权**（有 `--enable-auth`）：拒绝无鉴权头的请求
+1. 客户端在请求头中附带 `Authorization: Bearer <token>`
+2. 服务器提取 token 并调用已注册的鉴权回调
+3. 回调返回 `SessionConfig` 时，会话初始化成功并复用其中的 DID 凭证
+4. 回调返回 `None` 时，工具调用会收到 `AUTHENTICATION_FAILED` 错误
 
 ## 环境变量
 
@@ -294,12 +260,11 @@ docker run -p 9880:9880 \
    - 生产环境建议使用反向代理（如 Nginx）配置 HTTPS
    - 或使用云服务提供商的负载均衡器
 
-2. **Bearer Token 鉴权**
-   - 生产环境必须启用 `--enable-auth` 并设置强 token
-   - Token 应该足够长且随机（推荐至少 32 字符）
-   - 定期更换 token
-   - 不要在代码中硬编码 token，使用环境变量
-   - 示例：`--auth-token $(openssl rand -base64 32)`
+2. **访问鉴权**
+   - 生产环境建议通过 `set_auth_callback` 实现 Bearer Token 或 JWT 校验
+   - Token 应足够长且随机（推荐至少 32 字符）
+   - 定期轮换凭证，并使用环境变量或密钥管理服务分发
+   - 在日志中避免记录完整凭证
 
 3. **DID 凭证**
    - 将 DID 文档和私钥存储在安全位置
@@ -315,12 +280,12 @@ docker run -p 9880:9880 \
 | 特性 | 本地模式 (stdio) | 远程模式 (HTTP) |
 |-----|----------------|----------------|
 | 通信协议 | MCP stdio | MCP over HTTP |
-| 鉴权方式 | 无（本地信任） | Bearer Token（可选） |
+| 鉴权方式 | 无（本地信任） | 可通过回调扩展（Bearer/JWT） |
 | 适用场景 | Claude Desktop | Web 应用、远程调用 |
 | 部署复杂度 | 简单 | 中等 |
 | 网络要求 | 无 | 需要网络访问 |
 | 并发支持 | 单连接 | 多连接 |
-| 安全性 | 依赖本地环境 | 支持鉴权和HTTPS |
+| 安全性 | 依赖本地环境 | 可叠加鉴权与 HTTPS |
 
 ## 故障排查
 
@@ -350,7 +315,7 @@ Failed to connect to MCP server
 解决：
 - 检查是否提供了 `Authorization` 头
 - 验证 Bearer Token 是否正确
-- 确认服务器是否启用了鉴权（`--enable-auth`）
+- 确认自定义 `set_auth_callback` 是否返回了有效的 `SessionConfig`
 - 查看服务器日志了解详细错误信息
 
 ### ANP 未初始化

@@ -21,7 +21,7 @@ MCP2ANP 是一个 **MCP 桥接服务器**，将 ANP (Agent Network Protocol) 的
 ### 运行模式
 
 - **本地模式（stdio）**: 通过标准输入输出与 MCP 客户端通信，适用于 Claude Desktop 等桌面应用
-- **远程模式（HTTP）**: 通过 FastAPI 提供 HTTP API，支持远程调用，使用 API Key 进行鉴权
+- **远程模式（HTTP）**: 通过 FastMCP HTTP 传输提供远程访问，可结合自定义鉴权回调扩展访问控制
 
 详见 [远程服务器文档](docs/REMOTE_SERVER.md)
 
@@ -32,11 +32,10 @@ flowchart LR
     subgraph MCP Client
       U[LLM / 前端] -->|call tool| T1[anp.fetchDoc]
       U -->|call tool| T2[anp.invokeOpenRPC]
-      U -->|optional| T0[anp.setAuth]
     end
 
     subgraph MCP2ANP Bridge
-      T0 --> AC[ANPCrawler创建/更新]
+      ENV[环境变量/默认凭证] --> AC[ANPCrawler上下文]
       T1 --> AC
       T2 --> AC
       AC --> DID[DID认证]
@@ -85,26 +84,15 @@ uv run mcp2anp local --reload --log-level DEBUG
 **远程模式（HTTP API）**：
 
 ```bash
-# 启动远程服务器（无鉴权）
+# 启动远程服务器
 uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
 
-# 启动远程服务器（启用鉴权）
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880 --enable-auth --auth-token your-secret-token
-
-# 在 Claude Code 中添加远程服务器（无鉴权）
+# 在 Claude Code 中添加远程服务器
 claude mcp add --transport http mcp2anp-remote http://YOUR_IP:9880/mcp
-
-# 在 Claude Code 中添加远程服务器（有鉴权）
-claude mcp add --transport http mcp2anp-remote http://YOUR_IP:9880/mcp --header "Authorization: Bearer your-secret-token"
-```
-
-我们在服务端部署了一个MCP server，可以使用下面的命令直接体验：
-
-```bash
-claude mcp add --transport http mcp2anp-remote https://agent-connect.ai/mcp2anp/mcp
 ```
 
 详细的远程模式使用方法请参见 [远程服务器文档](docs/REMOTE_SERVER.md)
+，包括如何通过 `set_auth_callback` 集成自定义鉴权逻辑。
 
 ### 运行官方 Demo（推荐）
 
@@ -114,7 +102,7 @@ claude mcp add --transport http mcp2anp-remote https://agent-connect.ai/mcp2anp/
 uv run python examples/mcp_client_demo.py
 ```
 
-> 该脚本会通过 stdio 启动 `mcp2anp.server`，依次演示 `anp.setAuth`、`anp.fetchDoc` 与 `anp.invokeOpenRPC`。如需与真实 ANP 服务联调，请确保本地或远程 JSON-RPC 端点可达。
+> 该脚本会通过 stdio 启动 `mcp2anp.server`，依次演示 `anp.fetchDoc` 与 `anp.invokeOpenRPC` 的基础流程。如需与真实 ANP 服务联调，请确保本地或远程 JSON-RPC 端点可达。
 
 ### Claude code中添加此mcp server
 
@@ -139,16 +127,23 @@ claude mcp add mcp2anp \
   -- uv run --directory /Users/cs/work/mcp2anp python -m mcp2anp.server
 ```
 
+### 使用远程MCP
+
+我们在服务端部署了一个MCP server，可以使用下面的命令直接体验：
+
+```bash
+claude mcp add --transport http mcp2anp-remote https://agent-connect.ai/mcp2anp/mcp
+```
+
+
 ### 基本使用
 
-1. **设置认证（可选）**:
-   ```json
-   {
-     "didDocumentPath": "docs/did_public/public-did-doc.json",
-     "didPrivateKeyPath": "docs/did_public/public-private-key.pem"
-   }
+1. **配置 DID 凭证（可选）**  
+   默认情况下，服务器会加载 `docs/did_public/` 中的公共凭证。若需要自定义，请在启动前设置：
+   ```bash
+   export ANP_DID_DOCUMENT_PATH="/path/to/your/did-document.json"
+   export ANP_DID_PRIVATE_KEY_PATH="/path/to/your/private-key.pem"
    ```
-   *注：如果不调用setAuth，系统会自动使用docs/did_public/中的公共DID凭证*
 
 2. **获取 ANP 文档**:
    ```json
@@ -171,7 +166,7 @@ claude mcp add mcp2anp \
 
 ## 工具说明
 
-> **注意**: `anp.setAuth` 工具已移除。系统现在自动使用环境变量或默认的公共 DID 凭证进行认证。
+> **注意**: `anp.setAuth` 工具已移除。系统会在启动时读取环境变量或使用默认的公共 DID 凭证完成认证。
 
 ### anp.fetchDoc
 
@@ -285,7 +280,7 @@ uv run python examples/mcp_client_demo.py
 脚本会自动：
 
 - 列出 `mcp2anp` 暴露的工具
-- 使用 `docs/did_public/` 内的公共凭证调用 `anp.setAuth`
+- 使用 `docs/did_public/` 内的公共凭证初始化 ANP 连接
 - 访问 `anp.fetchDoc` 并展示返回的链接
 - 调用 `anp.invokeOpenRPC` 的 `echo` 和 `getStatus` 方法验证回路
 
@@ -294,47 +289,57 @@ uv run python examples/mcp_client_demo.py
 ### 完整的酒店预订工作流
 
 ```python
-# 1. 设置认证
-await set_auth_tool.execute({
-    "didDocumentPath": "docs/examples/did-document.json",
-    "didPrivateKeyPath": "docs/examples/private-key.pem"
-})
+import asyncio
+import os
 
-# 2. 获取智能体描述
-agent_info = await fetch_doc_tool.execute({
-    "url": "https://grand-hotel.com/agents/hotel-assistant/ad.json"
-})
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
-# 3. 获取预订接口规范
-interface_spec = await fetch_doc_tool.execute({
-    "url": agent_info["links"][0]["url"]  # 第一个接口链接
-})
+# 可选：在代码中指定自定义 DID 凭证路径
+os.environ.setdefault("ANP_DID_DOCUMENT_PATH", "docs/did_public/public-did-doc.json")
+os.environ.setdefault("ANP_DID_PRIVATE_KEY_PATH", "docs/did_public/public-private-key.pem")
 
-# 4. 搜索可用房间
-rooms = await invoke_openrpc_tool.execute({
-    "endpoint": "https://grand-hotel.com/api/booking",
-    "method": "searchRooms",
-    "params": {
-        "checkIn": "2025-10-01",
-        "checkOut": "2025-10-03",
-        "guests": 2
-    }
-})
 
-# 5. 确认预订
-booking = await invoke_openrpc_tool.execute({
-    "endpoint": "https://grand-hotel.com/api/booking",
-    "method": "confirmBooking",
-    "params": {
-        "checkIn": "2025-10-01",
-        "checkOut": "2025-10-03",
-        "roomType": "standard",
-        "guestInfo": {
-            "name": "张三",
-            "email": "zhangsan@example.com"
-        }
-    }
-})
+async def main() -> None:
+    """演示从发现到调用接口的完整流程。"""
+    server_params = StdioServerParameters(
+        command="uv",
+        args=["run", "python", "-m", "mcp2anp.server"],
+    )
+
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            agent_doc = await session.call_tool(
+                "anp.fetchDoc",
+                arguments={
+                    "url": "https://grand-hotel.com/agents/hotel-assistant/ad.json"
+                },
+            )
+
+            booking_result = await session.call_tool(
+                "anp.invokeOpenRPC",
+                arguments={
+                    "endpoint": "https://grand-hotel.com/api/booking",
+                    "method": "confirmBooking",
+                    "params": {
+                        "checkIn": "2025-10-01",
+                        "checkOut": "2025-10-03",
+                        "roomType": "standard",
+                        "guestInfo": {
+                            "name": "张三",
+                            "email": "zhangsan@example.com",
+                        },
+                    },
+                },
+            )
+
+            print("Agent doc:", agent_doc)
+            print("Booking result:", booking_result)
+
+
+asyncio.run(main())
 ```
 
 ## 配置

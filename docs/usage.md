@@ -2,9 +2,8 @@
 
 ## 概述
 
-MCP2ANP 是一个本地 MCP 服务器，提供三个核心工具来桥接 MCP 和 ANP 协议：
+MCP2ANP 是一个本地 MCP 服务器，提供两个核心工具来桥接 MCP 和 ANP 协议：
 
-- `anp.setAuth`: 设置 DID 认证上下文
 - `anp.fetchDoc`: 获取和解析 ANP 文档
 - `anp.invokeOpenRPC`: 调用 OpenRPC 端点
 
@@ -25,16 +24,12 @@ uv run mcp2anp --log-level INFO
 
 ### 2. 配置认证（可选）
 
-首先设置 DID 认证上下文：
+服务器会在启动时自动加载 `docs/did_public/` 中的公共 DID 凭证。若需使用自定义凭证，在运行命令前设置环境变量：
 
-```json
-{
-  "tool": "anp.setAuth",
-  "arguments": {
-    "didDocumentPath": "/path/to/your/did-document.json",
-    "didPrivateKeyPath": "/path/to/your/private-key.pem"
-  }
-}
+```bash
+export ANP_DID_DOCUMENT_PATH="/path/to/your/did-document.json"
+export ANP_DID_PRIVATE_KEY_PATH="/path/to/your/private-key.pem"
+uv run python -m mcp2anp.server
 ```
 
 ### 3. 获取 ANP 文档
@@ -79,11 +74,10 @@ uv run mcp2anp --log-level INFO
 ### 酒店预订场景
 
 ```bash
-# 1. 设置认证（可选）
-anp.setAuth({
-  "didDocumentPath": "docs/examples/did-document.json",
-  "didPrivateKeyPath": "docs/examples/private-key.pem"
-})
+# 1. （可选）设置自定义 DID 凭证并启动服务器
+export ANP_DID_DOCUMENT_PATH="docs/examples/did-document.json"
+export ANP_DID_PRIVATE_KEY_PATH="docs/examples/private-key.pem"
+uv run python -m mcp2anp.server
 
 # 2. 获取智能体描述
 anp.fetchDoc({
