@@ -32,7 +32,7 @@ async def test_authenticated_flow():
 
             # 步骤 1: 尝试不带认证访问（应该失败）
             print("步骤 1: 尝试不带认证访问受保护的端点")
-            test_url = "http://localhost:9880/agents/test/ad.json"
+            test_url = "https://agent-connect.ai/agents/test/ad.json"
             print(f"URL: {test_url}\n")
 
             result = await session.call_tool(
