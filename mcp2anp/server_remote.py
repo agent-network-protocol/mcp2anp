@@ -125,7 +125,7 @@ def _get_state(ctx: Context) -> dict[str, Any]:
     return st
 
 
-def authenticate_and_get_config(ctx: Context) -> SessionConfig | None:
+def authenticate_and_get_config() -> SessionConfig | None:
     """从请求头中提取 token，并调用回调完成鉴权，返回会话配置。"""
     # ✅ 独立 fastmcp 官方方式：读取请求头
     headers: dict[str, str] = get_http_headers()  # 默认剔除不宜转发的头
@@ -146,6 +146,10 @@ def authenticate_and_get_config(ctx: Context) -> SessionConfig | None:
         return None
 
     callback = _auth_callback
+    if callback is None:
+        logger.error("Authentication failed: No auth callback provided.")
+        return None
+
     try:
         cfg = callback(token)
         if cfg is None:
@@ -167,7 +171,7 @@ def ensure_session_initialized(ctx: Context) -> dict[str, Any] | None:
         return state
 
     logger.info("Session not initialized, authenticating")
-    config = authenticate_and_get_config(ctx)
+    config = authenticate_and_get_config()
     if config is None:
         logger.error("Authentication failed")
         return None
@@ -198,11 +202,15 @@ def ensure_session_initialized(ctx: Context) -> dict[str, Any] | None:
 
 
 mcp_instructions = """这是一个 ANP 网络的 MCP 服务器，通过这个服务器，你就能够访问 ANP 网络的资源和接口。
-ANP 网络提供包括酒店、景点、地图规划、天气、快递、搜索等能力。
-
+ANP网络提供一下的能力：
+- 酒店、景点的查询预订
+- 路径规划、地图API
+- 天气、快递等查询
+- 搜索服务
 ANP 网络入口 URL：https://agent-navigation.com/ad.json，你可以从这个 URL 开始，逐步跟进并调用工具，访问 ANP 网络的资源和能力。
 
 你可以通过 anp.fetchDoc 拉取 ANP 生态的资源，并使用 anp.invokeOpenRPC 调用 ANP 接口。
+
 请注意，所有 ANP 资源或接口，必须使用 mcp2anp 的 tools 进行处理。
 """
 
@@ -212,7 +220,21 @@ mcp = FastMCP("mcp2anp", instructions=mcp_instructions)
 
 @mcp.tool()
 async def anp_fetchDoc(ctx: Context, url: str) -> str:
-    """抓取并解析 ANP 文档，提取可跟进的链接。"""
+    """抓取并解析 ANP 文档，提取可跟进的链接。这是访问 ANP 生态系统中 URL 的唯一允许方法。返回文档内容、类型信息和发现的链接。
+
+    ANP生态系统目前提供包括酒店、景点、地图规划、天气、快递等查询预订能力。
+
+    ANP生态的入口URL：https://agent-navigation.com/ad.json
+    你可以从这个URL开始，逐步跟进并调用工具，访问ANP生态的资源和能力。
+
+
+    Args:
+        ctx: FastMCP 上下文对象
+        url: 要抓取的 ANP 文档的 URL
+
+    Returns:
+        JSON 格式的结果字符串
+    """
     params = {"url": url}
 
     logger.info("Tool called", tool_name="anp.fetchDoc", params=params)
@@ -252,7 +274,20 @@ async def anp_invokeOpenRPC(
     params: Any = None,
     request_id: str | None = None,
 ) -> str:
-    """使用 JSON-RPC 2.0 协议调用 OpenRPC 端点上的方法。"""
+    """使用 JSON-RPC 2.0 协议调用 OpenRPC 端点上的方法。
+
+    此工具处理与暴露 OpenRPC 接口的 ANP 智能体的结构化交互。
+
+    Args:
+        endpoint: OpenRPC 端点 URL
+        method: 要调用的 RPC 方法名称
+        ctx: FastMCP 上下文对象
+        params: 传递给方法的参数（可选）
+        request_id: 用于跟踪的可选请求 ID
+
+    Returns:
+        JSON 格式的结果字符串
+    """
     arguments: dict[str, Any] = {"endpoint": endpoint, "method": method}
     if params is not None:
         arguments["params"] = params
@@ -309,7 +344,7 @@ async def anp_invokeOpenRPC(
     help="设置日志级别",
 )
 def main(host: str, port: int, log_level: str) -> None:
-    """运行 MCP2ANP 远程桥接服务器（HTTP 模式，支持 X-API-Key / Bearer）。"""
+    """运行 MCP2ANP 远程桥接服务器（HTTP 模式，支持 X-API-Key）。"""
     setup_logging(log_level)
 
     # 设置远程验证回调
