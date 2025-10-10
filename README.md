@@ -20,39 +20,65 @@ MCP2ANP 是一个 **MCP 桥接服务器**，将 ANP (Agent Network Protocol) 的
 
 ### 运行模式
 
-- **本地模式（stdio）**: 通过标准输入输出与 MCP 客户端通信，适用于 Claude Desktop 等桌面应用
-- **远程模式（HTTP）**: 通过 FastMCP HTTP 传输提供远程访问，可结合自定义鉴权回调扩展访问控制
+
+- **本地模式 (Local stdio)**: 通过标准输入输出与 MCP 客户端通信，适用于 Claude Desktop 等桌面应用。
+- **远程模式 (Remote HTTP)**: 通过 FastMCP HTTP 传输提供远程访问，可结合自定义鉴权回调扩展访问控制。
+
+> ⚠️ **重要提示：两种模式的认证方式完全不同！**
+>
+> -   **本地模式**：认证信息通过**环境变量**或**默认本地 DID 文件**在启动时加载，整个服务进程使用单一的 DID 身份。
+> -   **远程模式**：认证通过客户端请求中的 **`X-API-Key`** 请求头进行，每个会话独立认证，支持多用户。
 
 详见 [远程服务器文档](docs/REMOTE_SERVER.md)
 
 ## 架构设计
 
+#### 本地模式 (Local Mode)
+
 ```mermaid
 flowchart LR
     subgraph MCP Client
-      U[LLM / 前端] -->|call tool| T1[anp.fetchDoc]
-      U -->|call tool| T2[anp.invokeOpenRPC]
+      U[LLM / 前端] -->|call tool| T[Tools]
     end
 
-    subgraph MCP2ANP Bridge
+    subgraph MCP2ANP Bridge (Local)
       ENV[环境变量/默认凭证] --> AC[ANPCrawler上下文]
-      T1 --> AC
-      T2 --> AC
+      T --> AC
       AC --> DID[DID认证]
       DID --> AGL[agent-connect库]
     end
 
     subgraph ANP Side
-      AGL -->|HTTP+DID| D1[AgentDescription]
-      AGL -->|HTTP+DID| D2[Informations]
-      AGL -->|HTTP+DID| D3[Interfaces]
-      AGL -->|JSON-RPC+DID| E1[OpenRPC Endpoint]
+      AGL -->|HTTP+DID| ANP
     end
 ```
 
-## 快速开始
+#### 远程模式 (Remote Mode)
 
-### 安装
+```mermaid
+flowchart LR
+    subgraph MCP Client
+      U[LLM / 前端] -->|call tool with API Key| T[Tools]
+    end
+
+    subgraph MCP2ANP Bridge (Remote)
+      subgraph Session Context
+          T --> |extract API Key| Auth[远程认证服务]
+          Auth -->|fetches DID| DID_Paths[DID 凭证路径]
+          DID_Paths --> AC[ANPCrawler上下文]
+      end
+      AC --> DID[DID认证]
+      DID --> AGL[agent-connect库]
+    end
+
+    subgraph ANP Side
+      AGL -->|HTTP+DID| ANP
+    end
+```
+
+## 快速上手
+
+### 1. 安装
 
 ```bash
 # 克隆项目
@@ -66,78 +92,61 @@ uv venv --python 3.11
 uv sync
 ```
 
-### 启动服务器
+### 2. 运行本地模式 (Local Mode)
 
-**本地模式（stdio）**：
+本地模式通过标准输入/输出 (stdio) 与客户端通信，使用环境变量或默认文件进行认证。
+
+#### A. 启动服务器
 
 ```bash
-# 使用统一CLI
+# 使用默认的公共 DID 凭证启动
 uv run mcp2anp local --log-level INFO
-
-# 或使用专用命令
-uv run mcp2anp-local --log-level INFO
-
-# 开发模式（带热重载）
-uv run mcp2anp local --reload --log-level DEBUG
 ```
 
-**远程模式（HTTP API）**：
-
+如需使用自定义 DID，请在启动前设置环境变量：
 ```bash
-# 启动远程服务器
-uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
-
-# 在 Claude Code 中添加远程服务器
-claude mcp add --transport http mcp2anp-remote http://YOUR_IP:9880/mcp
+export ANP_DID_DOCUMENT_PATH="/path/to/your/did-document.json"
+export ANP_DID_PRIVATE_KEY_PATH="/path/to/your/private-key.pem"
+uv run python -m mcp2anp.server
 ```
 
-详细的远程模式使用方法请参见 [远程服务器文档](docs/REMOTE_SERVER.md)
-，包括如何通过 `set_auth_callback` 集成自定义鉴权逻辑。
-
-### 运行官方 Demo（推荐）
-
-项目提供了基于 MCP 官方 SDK 的完整客户端演示脚本，能够从启动服务器到调用所有工具一次跑通。推荐使用下列命令直接体验：
+#### B. 添加到 Claude Code
 
 ```bash
-uv run python examples/mcp_client_demo.py
-```
-
-> 该脚本会通过 stdio 启动 `mcp2anp.server`，依次演示 `anp.fetchDoc` 与 `anp.invokeOpenRPC` 的基础流程。如需与真实 ANP 服务联调，请确保本地或远程 JSON-RPC 端点可达。
-
-### Claude code中添加此mcp server
-
-助于：下面的路径需要更改为你自己路径
-
-### 在mcp2anp目录安装
-
-```bash
-cd mcp2anp
+# 在 mcp2anp 目录下运行
 claude mcp add mcp2anp \
   --env ANP_DID_DOCUMENT_PATH=docs/did_public/public-did-doc.json \
   --env ANP_DID_PRIVATE_KEY_PATH=docs/did_public/public-private-key.pem \
   -- uv run python -m mcp2anp.server
 ```
 
-### 在其他目录安装
+### 3. 运行远程模式 (Remote Mode)
 
+远程模式通过 HTTP 提供服务，并强制使用 API Key 进行认证。
+
+#### A. 启动服务器
+
+首先，确保您的 API Key 认证服务正在运行。然后启动远程服务器：
 ```bash
-claude mcp add mcp2anp \
-  --env ANP_DID_DOCUMENT_PATH=/Users/cs/work/mcp2anp/docs/did_public/public-did-doc.json \
-  --env ANP_DID_PRIVATE_KEY_PATH=/Users/cs/work/mcp2anp/docs/did_public/public-private-key.pem \
-  -- uv run --directory /Users/cs/work/mcp2anp python -m mcp2anp.server
+uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
 ```
 
-### 使用远程MCP
+#### B. 添加到 Claude Code
 
-我们在服务端部署了一个MCP server，可以使用下面的命令直接体验：
+将 `YOUR_API_KEY` 替换为您的有效 API 密钥。
+```bash
+claude mcp add --transport http mcp2anp-remote http://localhost:9880/mcp --header "X-API-Key: YOUR_API_KEY"
+```
+
+### 4. 运行官方 Demo (验证环境)
+
+项目提供了一个客户端演示脚本，可用于快速验证本地模式是否工作正常。
 
 ```bash
-claude mcp add --transport http mcp2anp-remote https://agent-connect.ai/mcp2anp/mcp
+uv run python examples/mcp_client_demo.py
 ```
-mcp 配置示例
-
 ```json
-"remote": {
+"mcp2anp": {
     "type": "http",
     "url": "http://your-mcp-server-url/mcp",
     "headers": {
@@ -146,64 +155,73 @@ mcp 配置示例
     "disabled": false
 }
 ```
-### 基本使用
-
-1. **配置 DID 凭证（可选）**
-   默认情况下，服务器会加载 `docs/did_public/` 中的公共凭证。若需要自定义，请在启动前设置：
-   ```bash
-   export ANP_DID_DOCUMENT_PATH="/path/to/your/did-document.json"
-   export ANP_DID_PRIVATE_KEY_PATH="/path/to/your/private-key.pem"
-   ```
-
-2. **获取 ANP 文档**:
-   ```json
-   {
-     "url": "https://agent-connect.ai/agents/travel/mcp/agents/amap/ad.json"
-   }
-   ```
-
-3. **调用 OpenRPC 方法**:
-   ```json
-   {
-     "endpoint": "https://example.com/rpc",
-     "method": "searchLocations",
-     "params": {
-       "query": "北京天安门",
-       "city": "北京"
-     }
-   }
-   ```
-
 ## 工具说明
 
-> **注意**: `anp.setAuth` 工具已移除。系统会在启动时读取环境变量或使用默认的公共 DID 凭证完成认证。
+本项目提供两个核心工具，关于它们的详细工作流程，请参见紧随其后的 **[核心工具详解](#核心工具详解)** 章节。
 
-### anp.fetchDoc
+-   **`anp.fetchDoc`**: 发现网络资源，如同智能浏览器。
+-   **`anp.invokeOpenRPC`**: 执行具体操作，如同提交在线表单。
 
-获取并解析 ANP 文档，提取可跟进的链接。这是访问 ANP 生态中 URL 的**唯一入口**。
+> **认证注意**: 认证方式取决于服务器的运行模式（本地模式使用环境变量/文件，远程模式使用 API Key）。详情请见上文“快速上手”章节。
 
-**输入**:
-- `url`: 要获取的 ANP 文档 URL
+## 核心工具详解
 
-**输出**:
-- `contentType`: 内容类型
-- `text`: 原始文本内容
-- `json`: 解析的 JSON 内容（如适用）
-- `links`: 可跟进的链接列表
+MCP2ANP 的核心是两个工具，它们共同实现了在 ANP 网络中的“发现”与“执行”。
 
-### anp.invokeOpenRPC
+### 1. `anp.fetchDoc`：发现网络资源
 
-调用 OpenRPC 端点的 JSON-RPC 2.0 方法。
+`anp.fetchDoc` 是您在 ANP 网络中的“眼睛”和“导航器”。它不仅仅是一个简单的内容获取工具，更是探索和理解智能体网络的主要方式。
 
-**输入**:
-- `endpoint`: OpenRPC 端点 URL
-- `method`: 要调用的方法名
-- `params`: 方法参数（可选）
-- `id`: 请求 ID（可选）
+**工作流类比**:
 
-**输出**:
-- `result`: 方法返回结果
-- `raw`: 原始 JSON-RPC 响应
+把它想象成一个智能浏览器。您给它一个 URL，它会：
+1.  **访问页面**: 获取该 URL 的内容 (`text` 或 `json`)。
+2.  **提取链接**: 智能地解析页面内容，并以结构化的形式返回页面上所有可供下一步操作的“链接” (`links`)。
+
+**典型使用流程**:
+
+1.  **进入网络**: 从一个已知的入口 URL 开始，例如 `https://agent-navigation.com/ad.json`。
+    ```json
+    // 第一次调用，获取网络入口的描述
+    anp.fetchDoc({"url": "https://agent-navigation.com/ad.json"})
+    ```
+2.  **发现服务**: 在返回结果的 `links` 数组中，寻找您感兴趣的服务或智能体，并获取其 URL。
+3.  **深入探索**: 选择一个链接，再次调用 `anp.fetchDoc` 来获取该服务的详细信息或其提供的具体接口。这个过程可以不断重复，就像在网站上点击链接一样，从而在整个 ANP 网络中进行“爬取”。
+
+**关键输出**:
+
+-   `text`/`json`: 资源的内容。
+-   `links`: 一个结构化数组，是实现自主导航的关键。每个链接都包含 `url`、`title`（标题）、`description`（描述）和 `rel`（关系，如 `interface` 代表这是一个可调用的接口）等信息。
+
+### 2. `anp.invokeOpenRPC`：执行具体操作
+
+如果说 `anp.fetchDoc` 是“发现”，那么 `anp.invokeOpenRPC` 就是“执行”。当您通过 `fetchDoc` 发现一个可执行的接口（通常是一个 OpenRPC 规范）后，就使用这个工具来调用其中的具体方法。
+
+**工作流类比**:
+
+如果 `fetchDoc` 是导航到一个带有在线表单的网页，那么 `invokeOpenRPC` 就是**填写并提交这个表单**来完成一个实际操作（如预订酒店、查询天气）。
+
+**典型使用流程**:
+
+1.  **发现接口**: 通过 `anp.fetchDoc` 找到一个 `rel` 为 `interface` 的链接，并再次调用 `fetchDoc` 获取其内容。这个内容通常是一个 OpenRPC 规范的 JSON 文件。
+2.  **理解接口**: 从 OpenRPC 规范中，您可以了解到：
+    -   服务在哪个 `endpoint` URL 上接收请求。
+    -   它提供了哪些 `method` (方法)。
+    -   每个方法需要什么样的 `params` (参数)。
+3.  **调用方法**: 使用从规范中获得的信息，调用 `anp.invokeOpenRPC` 来执行一个具体动作。
+    ```json
+    // 假设已通过 fetchDoc 了解到有一个 "searchLocations" 方法
+    anp.invokeOpenRPC({
+      "endpoint": "https://example.com/rpc", // 从规范中获得
+      "method": "searchLocations",           // 从规范中获得
+      "params": {                            // 根据规范构建
+        "query": "北京天安门",
+        "city": "北京"
+      }
+    })
+    ```
+
+通过 `fetchDoc` 的不断发现和 `invokeOpenRPC` 的精确执行，您可以驱动一个智能体完成从信息检索到执行复杂任务的完整工作流。
 
 ## 项目结构
 
@@ -254,18 +272,6 @@ uv sync --group dev
 pre-commit install
 ```
 
-### 运行测试
-
-```bash
-# 运行所有测试
-uv run pytest
-
-# 运行特定测试
-uv run pytest tests/unit/test_tools.py -v
-
-# 运行测试并生成覆盖率报告
-uv run pytest --cov=mcp2anp --cov-report=html
-```
 
 ### 代码质量
 
@@ -295,6 +301,9 @@ uv run python examples/mcp_client_demo.py
 - 调用 `anp.invokeOpenRPC` 的 `echo` 和 `getStatus` 方法验证回路
 
 如需与真实环境交互，可将脚本中的测试 URL 替换为目标 ANP 服务地址。
+
+<details>
+<summary>点击查看：一个完整的酒店预订工作流示例</summary>
 
 ### 完整的酒店预订工作流
 
@@ -352,6 +361,8 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+</details>
+
 ## 配置
 
 ### 环境变量
@@ -362,8 +373,7 @@ asyncio.run(main())
 
 ### 命令行选项
 
-- `--log-level`: 设置日志级别
-- `--reload`: 启用热重载（开发模式）
+- `--log-level`: 设置日志级别、
 
 ## 安全注意事项
 
@@ -379,13 +389,6 @@ asyncio.run(main())
 3. 提交更改 (`git commit -m 'Add amazing feature'`)
 4. 推送到分支 (`git push origin feature/amazing-feature`)
 5. 打开 Pull Request
-
-### 提交规范
-
-- 使用 Google Python 编码规范
-- 确保所有测试通过: `uv run pytest`
-- 运行代码检查: `uv run ruff mcp2anp/ tests/`
-- 保持 ≥90% 测试覆盖率
 
 ## 许可证
 
