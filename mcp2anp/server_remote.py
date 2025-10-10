@@ -127,12 +127,12 @@ def _get_state(ctx: Context) -> dict[str, Any]:
 
 def authenticate_and_get_config() -> SessionConfig | None:
     """从请求头中提取 token，并调用回调完成鉴权，返回会话配置。"""
-    # ✅ 独立 fastmcp 官方方式：读取请求头
+
     headers: dict[str, str] = get_http_headers()  # 默认剔除不宜转发的头
 
     api_key = headers.get("X-API-Key")
+    token: str | None = None
 
-    token: str
     if api_key:
         token = api_key.strip()
         if not token:
@@ -140,9 +140,7 @@ def authenticate_and_get_config() -> SessionConfig | None:
             return None
         logger.info("Using X-API-Key header for authentication.")
     else:
-        logger.warning(
-            "Authentication failed: No Authorization or X-API-Key header found in request."
-        )
+        logger.warning("Authentication failed: No X-API-Key header found in request.")
         return None
 
     callback = _auth_callback
@@ -207,6 +205,7 @@ ANP网络提供一下的能力：
 - 路径规划、地图API
 - 天气、快递等查询
 - 搜索服务
+
 ANP 网络入口 URL：https://agent-navigation.com/ad.json，你可以从这个 URL 开始，逐步跟进并调用工具，访问 ANP 网络的资源和能力。
 
 你可以通过 anp.fetchDoc 拉取 ANP 生态的资源，并使用 anp.invokeOpenRPC 调用 ANP 接口。
@@ -347,7 +346,7 @@ def main(host: str, port: int, log_level: str) -> None:
     """运行 MCP2ANP 远程桥接服务器（HTTP 模式，支持 X-API-Key）。"""
     setup_logging(log_level)
 
-    # 设置远程验证回调
+    # 设置验证回调
     auth_api_url = f"http://{AUTH_HOST}:{AUTH_PORT}{AUTH_VERIFY_PATH}"
     logger.info(f"{auth_api_url=}")
     remote_auth_callback = create_did_auth_callback(
