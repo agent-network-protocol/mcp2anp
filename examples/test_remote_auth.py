@@ -23,6 +23,7 @@
 import asyncio
 import json
 import sys
+import time
 from asyncio.subprocess import Process
 from contextlib import suppress
 
@@ -98,8 +99,13 @@ class RemoteServerClientTester:
                     print(f"URL: {test_url}\n")
 
                     try:
+                        start_time = time.monotonic()
                         result = await session.call_tool(
                             "anp_fetchDoc", arguments={"url": test_url}
+                        )
+                        end_time = time.monotonic()
+                        logger.info(
+                            f"首次调用 anp_fetchDoc (含认证) 耗时: {end_time - start_time:.4f} 秒。"
                         )
 
                         for content in result.content:
@@ -236,11 +242,11 @@ class RemoteServerClientTester:
             server_api_key=valid_api_key,
         )
 
-        # 场景 2: 不使用 API Key (默认公共 DID)
-        results["不使用密钥 (默认凭证)"] = await self.run_client_test(
-            "不使用密钥 (默认凭证)",
+        # 场景 2: 不使用 API Key (预期失败)
+        results["不使用密钥 (预期失败)"] = await self.run_client_test(
+            "不使用密钥 (预期失败)",
             client_api_key=None,
-            expect_success=True,
+            expect_success=False,
             server_api_key=None,
         )
 
