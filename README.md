@@ -134,11 +134,21 @@ claude mcp add mcp2anp \
 ```bash
 claude mcp add --transport http mcp2anp-remote https://agent-connect.ai/mcp2anp/mcp
 ```
+mcp 配置示例
 
-
+```json
+"remote": {
+    "type": "http",
+    "url": "http://your-mcp-server-url/mcp",
+    "headers": {
+        "X-API-Key": "YOUR_API_KEY"
+    },
+    "disabled": false
+}
+```
 ### 基本使用
 
-1. **配置 DID 凭证（可选）**  
+1. **配置 DID 凭证（可选）**
    默认情况下，服务器会加载 `docs/did_public/` 中的公共凭证。若需要自定义，请在启动前设置：
    ```bash
    export ANP_DID_DOCUMENT_PATH="/path/to/your/did-document.json"

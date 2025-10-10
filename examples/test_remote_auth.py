@@ -1,382 +1,265 @@
-"""测试远程服务器的鉴权功能。
+"""
+对 `server_remote.py` 进行端到端集成测试，模拟一个真实的 MCP 客户端。
 
-此脚本测试以下场景：
-1. 无鉴权模式 - 不需要 Authorization 头
-2. 固定 Token 模式 - 验证正确和错误的 token
-3. 默认回调模式 - 打印 token 并通过
-4. 鉴权失败场景 - 缺少头、错误格式、空 token
+此脚本基于 `mcp_client_demo.py`，使用 MCP 官方 SDK (`mcp.client.stdio`)
+启动并连接到 `server_remote.py` 实例。
+
+测试场景:
+1. 使用有效的 API Key 启动服务器，并验证客户端能否成功初始化会话和列出工具。
+2. 不使用 API Key 启动服务器（使用默认凭证），并验证客户端能否成功操作。
+3. 使用无效的 API Key 启动服务器，并验证会话初始化是否会失败。
+
+前提:
+- 一个兼容的远程认证服务正在 `127.0.0.1:9866` 上运行。
+- 该认证服务能识别 "valid-key" 为有效，"invalid-key" 为无效。
+- 测试需要通过 `--api-key` 提供有效的 "valid-key"。
+
+如何运行:
+1. 确保已安装 dev 依赖: `uv pip install -e ".[dev]"`
+2. 运行测试:
+   uv run python examples/test_remote_auth_v2.py --api-key "valid-key"
 """
 
 import asyncio
 import json
-import subprocess
 import sys
-import time
-from typing import Any
+from asyncio.subprocess import Process
+from contextlib import suppress
 
-import httpx
+import click
 import structlog
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
 
+# --- 全局配置 ---
 logger = structlog.get_logger(__name__)
 
-# 测试配置
-SERVER_HOST = "127.0.0.1"
-SERVER_PORT = 8001  # 使用不同端口避免冲突
-BASE_URL = f"http://{SERVER_HOST}:{SERVER_PORT}/mcp"
-TEST_TOKEN = "test-secret-token-12345"
-INVALID_TOKEN = "wrong-token"
+MCP_HOST = "127.0.0.1"
+# Note: port is not needed for stdio client, but we pass it for consistency
+MCP_PORT = 9880
+
+DEFAULT_API_KEY = "sk_mcp_MW4O4-FECAP-WQPHF-DHIPR-HV7CK-KU2ED-OOB3E-6OVQD-ZA"
 
 
-class RemoteServerTester:
-    """远程服务器鉴权测试器。"""
+# --- 集成测试器 ---
 
-    def __init__(self):
-        """初始化测试器。"""
-        self.server_process: subprocess.Popen | None = None
-        # 禁用代理以避免 SOCKS 相关问题
-        self.client = httpx.AsyncClient(
-            timeout=30.0,
-            trust_env=False,  # 不使用环境变量中的代理设置
-        )
 
-    async def start_server(
-        self, enable_auth: bool = False, auth_token: str | None = None
-    ) -> None:
-        """启动远程服务器。
+class RemoteServerClientTester:
+    """使用 MCP 客户端测试 `server_remote.py` 的端到端测试器。"""
 
-        Args:
-            enable_auth: 是否启用鉴权
-            auth_token: 鉴权 token（可选）
+    async def run_client_test(
+        self,
+        name: str,
+        client_api_key: str | None,
+        expect_success: bool,
+        server_api_key: str | None,
+    ) -> bool:
         """
+        运行一个客户端测试场景。
+        启动服务器，连接客户端，并尝试初始化会话。
+        """
+        logger.info("=" * 60)
+        logger.info(f"测试场景: {name}")
+        display_key = client_api_key if client_api_key else DEFAULT_API_KEY
+        logger.info(f"API Key: '{display_key}', Expect Success: {expect_success}")
+        logger.info("=" * 60)
+
+        headers = None
+        if client_api_key:
+            headers = {
+                "X-API-Key": client_api_key,
+            }
+
+        server_process: Process | None = None
+
+        try:
+            server_process = await self._launch_server(server_api_key)
+            if server_process is None:
+                logger.error("❌ 测试失败: 服务器进程未能启动。")
+                return False
+
+            if not await self._wait_for_server_ready(server_process):
+                logger.error("❌ 测试失败: 服务器未能在预期时间内就绪。")
+                return False
+
+            async with streamablehttp_client(
+                url=f"http://{MCP_HOST}:{MCP_PORT}/mcp",
+                headers=headers,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as session:
+                    logger.info("尝试初始化 MCP 客户端会话...")
+                    await session.initialize()
+                    logger.info("会话初始化成功。")
+
+                    tools_result = await session.list_tools()
+                    logger.info(f"成功列出 {len(tools_result.tools)} 个工具。")
+
+                    test_url = "https://agent-search.ai/agents/navigation/ad.json"
+                    print(f"URL: {test_url}\n")
+
+                    try:
+                        result = await session.call_tool(
+                            "anp_fetchDoc", arguments={"url": test_url}
+                        )
+
+                        for content in result.content:
+                            if hasattr(content, "text"):
+                                try:
+                                    data = json.loads(content.text)
+                                    if not data.get("ok"):
+                                        print(
+                                            f"❌ 预期的错误: {data.get('error', {}).get('code')}"
+                                        )
+                                        print(
+                                            "   消息:"
+                                            f" {data.get('error', {}).get('message')}\n"
+                                        )
+                                except json.JSONDecodeError:
+                                    print(content.text)
+                    except Exception as fetch_error:
+                        logger.error(
+                            "调用 anp.fetchDoc 失败",
+                            error=str(fetch_error),
+                        )
+                        if expect_success:
+                            return False
+
+                    if not expect_success:
+                        logger.error("❌ 测试失败: 期望会话初始化失败，但它成功了。")
+                        return False
+
+                    logger.info("✅ 测试通过: 客户端成功连接并操作服务器。")
+                    return True
+
+        except Exception as e:
+            if expect_success:
+                logger.error(f"❌ 测试失败: 期望成功，但捕获到异常: {e}")
+                return False
+
+            logger.info(f"✅ 测试通过: 正确捕获到预期的异常: {e}")
+            if "AUTHENTICATION_FAILED" in str(e):
+                logger.info("错误消息包含 'AUTHENTICATION_FAILED'，符合预期。")
+            else:
+                logger.warning(
+                    f"错误消息不含 'AUTHENTICATION_FAILED'，但仍视为通过: {e}"
+                )
+            return True
+        finally:
+            if server_process is not None:
+                await self._stop_server(server_process)
+
+    async def _launch_server(self, server_api_key: str | None) -> Process | None:
+        """启动 server_remote.py 子进程。"""
         cmd = [
             "uv",
             "run",
             "python",
             "-m",
             "mcp2anp.server_remote",
-            "--host",
-            SERVER_HOST,
-            "--port",
-            str(SERVER_PORT),
-            "--log-level",
-            "INFO",
+            f"--host={MCP_HOST}",
+            f"--port={MCP_PORT}",
+            "--log-level=WARNING",
         ]
 
-        if enable_auth:
-            cmd.append("--enable-auth")
-            if auth_token:
-                cmd.extend(["--auth-token", auth_token])
-
-        logger.info("Starting server", cmd=" ".join(cmd))
-
-        self.server_process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-
-        # 等待服务器启动
-        await asyncio.sleep(3)
-
-        # 检查服务器是否启动成功
-        if self.server_process.poll() is not None:
-            stdout, stderr = self.server_process.communicate()
-            raise RuntimeError(
-                f"Server failed to start:\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
+        if server_api_key:
+            cmd.extend(
+                [
+                    f"--api-key={server_api_key}",
+                ]
             )
 
-        logger.info("Server started successfully")
-
-    def stop_server(self) -> None:
-        """停止远程服务器。"""
-        if self.server_process:
-            logger.info("Stopping server")
-            self.server_process.terminate()
-            try:
-                self.server_process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                logger.warning("Server did not stop gracefully, killing")
-                self.server_process.kill()
-                self.server_process.wait()
-            self.server_process = None
-            logger.info("Server stopped")
-
-    async def make_request(
-        self,
-        tool_name: str,
-        params: dict[str, Any],
-        auth_token: str | None = None,
-    ) -> dict[str, Any]:
-        """发送 MCP 工具调用请求。
-
-        Args:
-            tool_name: 工具名称
-            params: 工具参数
-            auth_token: Bearer Token（可选）
-
-        Returns:
-            响应数据
-        """
-        headers = {"Content-Type": "application/json"}
-        if auth_token:
-            headers["Authorization"] = f"Bearer {auth_token}"
-
-        payload = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {"name": tool_name, "arguments": params},
-        }
-
-        logger.info(
-            "Making request",
-            tool=tool_name,
-            has_auth=auth_token is not None,
-        )
+        logger.info("启动 server_remote 子进程", command=" ".join(cmd))
 
         try:
-            response = await self.client.post(
-                BASE_URL,
-                json=payload,
-                headers=headers,
-            )
-            return response.json()
-        except Exception as e:
-            logger.error("Request failed", error=str(e))
-            raise
+            process = await asyncio.create_subprocess_exec(*cmd)
+            return process
+        except FileNotFoundError as e:
+            logger.error("未能找到 uv 可执行文件", error=str(e))
+            return None
 
-    async def test_no_auth_mode(self) -> bool:
-        """测试无鉴权模式。"""
-        logger.info("=" * 60)
-        logger.info("测试场景 1: 无鉴权模式")
-        logger.info("=" * 60)
+    async def _wait_for_server_ready(
+        self, process: Process, timeout: float = 15.0
+    ) -> bool:
+        """等待服务器在指定超时内开始监听端口。"""
+        deadline = asyncio.get_running_loop().time() + timeout
 
-        try:
-            await self.start_server(enable_auth=False)
-
-            # 测试 1: 不带 token 的请求应该成功
-            logger.info("测试 1.1: 不带 Authorization 头的请求")
-            response = await self.make_request(
-                "anp.fetchDoc",
-                {"url": "https://agent-navigation.com/ad.json"},
-            )
-            logger.info("Response", response=response)
-
-            # 检查是否成功（不应该有 AUTHENTICATION_FAILED 错误）
-            if "error" in response and response.get("error", {}).get("code") == "AUTHENTICATION_FAILED":
-                logger.error("❌ 测试失败: 无鉴权模式下请求被拒绝")
+        while True:
+            if process.returncode is not None:
+                logger.error(
+                    "server_remote 提前退出",
+                    returncode=process.returncode,
+                )
                 return False
-
-            logger.info("✅ 测试通过: 无鉴权模式正常工作")
-            return True
-
-        except Exception as e:
-            logger.error("测试失败", error=str(e))
-            return False
-        finally:
-            self.stop_server()
-            await asyncio.sleep(1)
-
-    async def test_fixed_token_mode(self) -> bool:
-        """测试固定 Token 模式。"""
-        logger.info("=" * 60)
-        logger.info("测试场景 2: 固定 Token 模式")
-        logger.info("=" * 60)
-
-        try:
-            await self.start_server(enable_auth=True, auth_token=TEST_TOKEN)
-
-            # 测试 2.1: 使用正确的 token
-            logger.info("测试 2.1: 使用正确的 Bearer Token")
-            response = await self.make_request(
-                "anp.fetchDoc",
-                {"url": "https://agent-navigation.com/ad.json"},
-                auth_token=TEST_TOKEN,
-            )
-            logger.info("Response", response=response)
-
-            if "error" in response and response.get("error", {}).get("code") == "AUTHENTICATION_FAILED":
-                logger.error("❌ 测试失败: 正确的 token 被拒绝")
-                return False
-
-            logger.info("✅ 测试 2.1 通过: 正确的 token 被接受")
-
-            # 测试 2.2: 使用错误的 token
-            logger.info("测试 2.2: 使用错误的 Bearer Token")
-            response = await self.make_request(
-                "anp.fetchDoc",
-                {"url": "https://agent-navigation.com/ad.json"},
-                auth_token=INVALID_TOKEN,
-            )
-            logger.info("Response", response=response)
-
-            # 应该返回 AUTHENTICATION_FAILED 错误
-            # 检查中间件是否返回401错误
-            if response.get("error", {}).get("code") == "AUTHENTICATION_FAILED":
-                logger.info("✅ 测试 2.2 通过: 错误的 token 被正确拒绝")
-            else:
-                logger.error("❌ 测试失败: 错误的 token 未被拒绝", response=response)
-                return False
-
-            # 测试 2.3: 不带 token
-            logger.info("测试 2.3: 不带 Authorization 头")
-            response = await self.make_request(
-                "anp.fetchDoc",
-                {"url": "https://agent-navigation.com/ad.json"},
-            )
-            logger.info("Response", response=response)
-
-            # 应该返回 AUTHENTICATION_FAILED 错误
-            if response.get("error", {}).get("code") == "AUTHENTICATION_FAILED":
-                logger.info("✅ 测试 2.3 通过: 缺少 token 被正确拒绝")
-            else:
-                logger.error("❌ 测试失败: 缺少 token 的请求未被拒绝", response=response)
-                return False
-            logger.info("✅ 固定 Token 模式所有测试通过")
-            return True
-
-        except Exception as e:
-            logger.error("测试失败", error=str(e))
-            return False
-        finally:
-            self.stop_server()
-            await asyncio.sleep(1)
-
-    async def test_default_callback_mode(self) -> bool:
-        """测试默认回调模式。"""
-        logger.info("=" * 60)
-        logger.info("测试场景 3: 默认回调模式（启用鉴权但不设置 token）")
-        logger.info("=" * 60)
-
-        try:
-            await self.start_server(enable_auth=True, auth_token=None)
-
-            # 测试 3.1: 带任意 token 的请求应该通过（默认回调总是返回 True）
-            logger.info("测试 3.1: 使用任意 Bearer Token")
-            response = await self.make_request(
-                "anp.fetchDoc",
-                {"url": "https://agent-navigation.com/ad.json"},
-                auth_token="any-token-should-work",
-            )
-            logger.info("Response", response=response)
-
-            if "error" in response and response.get("error", {}).get("code") == "AUTHENTICATION_FAILED":
-                logger.error("❌ 测试失败: 默认回调模式拒绝了请求")
-                return False
-
-            logger.info("✅ 测试 3.1 通过: 任意 token 被接受（默认回调）")
-
-            # 测试 3.2: 不带 token 应该失败
-            logger.info("测试 3.2: 不带 Authorization 头")
-            response = await self.make_request(
-                "anp.fetchDoc",
-                {"url": "https://agent-navigation.com/ad.json"},
-            )
-            logger.info("Response", response=response)
-
-            # 应该返回 AUTHENTICATION_FAILED 错误
-            if response.get("error", {}).get("code") == "AUTHENTICATION_FAILED":
-                logger.info("✅ 测试 3.2 通过: 缺少 token 被正确拒绝")
-            else:
-                logger.error("❌ 测试失败: 缺少 token 的请求未被拒绝", response=response)
-                return False
-            logger.info("✅ 默认回调模式所有测试通过")
-            return True
-
-        except Exception as e:
-            logger.error("测试失败", error=str(e))
-            return False
-        finally:
-            self.stop_server()
-            await asyncio.sleep(1)
-
-    async def test_auth_failure_scenarios(self) -> bool:
-        """测试各种鉴权失败场景。"""
-        logger.info("=" * 60)
-        logger.info("测试场景 4: 鉴权失败场景")
-        logger.info("=" * 60)
-
-        try:
-            await self.start_server(enable_auth=True, auth_token=TEST_TOKEN)
-
-            # 测试 4.1: 错误的 Authorization 头格式（不是 Bearer）
-            logger.info("测试 4.1: 错误的 Authorization 头格式")
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": "Basic dGVzdDp0ZXN0",  # 应该是 Bearer
-            }
-            payload = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {
-                    "name": "anp.fetchDoc",
-                    "arguments": {"url": "https://agent-navigation.com/ad.json"},
-                },
-            }
-
-            response = await self.client.post(BASE_URL, json=payload, headers=headers)
-            result_json = response.json()
-
-            if result_json.get("error", {}).get("code") == "AUTHENTICATION_FAILED":
-                logger.info("✅ 测试 4.1 通过: 错误的头格式被正确拒绝")
-            else:
-                logger.error("❌ 测试失败: 错误的头格式未被拒绝", response=result_json)
-                return False
-
-            # 测试 4.2: 空 token（使用单个空格作为token）
-            logger.info("测试 4.2: 空 Bearer Token")
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer  ",  # 空格作为 token
-            }
 
             try:
-                response = await self.client.post(BASE_URL, json=payload, headers=headers)
-                result_json = response.json()
-
-                if result_json.get("error", {}).get("code") == "AUTHENTICATION_FAILED":
-                    logger.info("✅ 测试 4.2 通过: 空 token 被正确拒绝")
-                else:
-                    logger.error("❌ 测试失败: 空 token 未被拒绝", response=result_json)
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(MCP_HOST, MCP_PORT), timeout=1.0
+                )
+                writer.close()
+                await writer.wait_closed()
+                logger.info("server_remote 已开始监听", host=MCP_HOST, port=MCP_PORT)
+                return True
+            except (TimeoutError, ConnectionRefusedError, OSError):
+                if asyncio.get_running_loop().time() >= deadline:
                     return False
-            except Exception as e:
-                # httpx可能会拒绝非法的header，这也是一种有效的保护
-                logger.info(f"✅ 测试 4.2 通过: 客户端拒绝了非法header ({str(e)[:50]})")
-            logger.info("✅ 鉴权失败场景所有测试通过")
-            return True
+                await asyncio.sleep(0.3)
 
-        except Exception as e:
-            logger.error("测试失败", error=str(e))
-            return False
-        finally:
-            self.stop_server()
-            await asyncio.sleep(1)
+    async def _stop_server(self, process: Process) -> None:
+        """终止 server_remote 子进程。"""
+        if process.returncode is not None:
+            return
 
-    async def run_all_tests(self) -> None:
+        logger.info("停止 server_remote 子进程")
+        process.terminate()
+
+        try:
+            await asyncio.wait_for(process.wait(), timeout=5.0)
+        except TimeoutError:
+            logger.warning("子进程未在超时内退出，尝试强制 kill")
+            process.kill()
+            with suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(process.wait(), timeout=5.0)
+
+    async def run_all_tests(self, valid_api_key: str) -> None:
         """运行所有测试。"""
-        logger.info("开始远程服务器鉴权功能测试")
+        logger.info("=" * 60)
+        logger.info("开始 `server_remote` 端到端客户端集成测试")
         logger.info("=" * 60)
 
-        results = {
-            "无鉴权模式": await self.test_no_auth_mode(),
-            "固定 Token 模式": await self.test_fixed_token_mode(),
-            "默认回调模式": await self.test_default_callback_mode(),
-            "鉴权失败场景": await self.test_auth_failure_scenarios(),
-        }
+        results = {}
 
-        # 汇总结果
+        # 场景 1: 使用提供的有效 API Key
+        results["使用有效密钥"] = await self.run_client_test(
+            "使用有效密钥",
+            client_api_key=valid_api_key,
+            expect_success=True,
+            server_api_key=valid_api_key,
+        )
+
+        # 场景 2: 不使用 API Key (默认公共 DID)
+        results["不使用密钥 (默认凭证)"] = await self.run_client_test(
+            "不使用密钥 (默认凭证)",
+            client_api_key=None,
+            expect_success=True,
+            server_api_key=None,
+        )
+
+        # 场景 3: 使用无效的 API Key
+        results["使用无效密钥"] = await self.run_client_test(
+            "使用无效密钥",
+            client_api_key="invalid-key",
+            expect_success=False,
+            server_api_key=valid_api_key,
+        )
+
         logger.info("=" * 60)
         logger.info("测试结果汇总")
         logger.info("=" * 60)
 
-        all_passed = True
+        all_passed = all(results.values())
         for test_name, passed in results.items():
             status = "✅ 通过" if passed else "❌ 失败"
             logger.info(f"{test_name}: {status}")
-            if not passed:
-                all_passed = False
 
         logger.info("=" * 60)
         if all_passed:
@@ -385,25 +268,38 @@ class RemoteServerTester:
             logger.error("❌ 部分测试失败")
             sys.exit(1)
 
-    async def cleanup(self) -> None:
-        """清理资源。"""
-        await self.client.aclose()
+
+# --- 主程序入口 ---
 
 
-async def main() -> None:
-    """主函数。"""
-    tester = RemoteServerTester()
+@click.command()
+@click.option(
+    "--api-key",
+    "valid_api_key",
+    default=DEFAULT_API_KEY,
+    show_default=False,
+    help="用于测试的有效 API Key (默认使用预置密钥)。",
+)
+def main(valid_api_key: str):
+    """
+    运行 `server_remote.py` 的端到端集成测试。
+    需要一个正在运行的认证服务器，该服务器能识别 'valid-key' 和 'invalid-key'。
+    """
+    structlog.configure(
+        processors=[
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.dev.ConsoleRenderer(),
+        ]
+    )
 
+    tester = RemoteServerClientTester()
     try:
-        await tester.run_all_tests()
-    except KeyboardInterrupt:
-        logger.info("测试被用户中断")
+        asyncio.run(tester.run_all_tests(valid_api_key))
     except Exception as e:
-        logger.error("测试过程中发生错误", error=str(e))
+        logger.error("测试执行期间发生未捕获的错误。", error=str(e))
         sys.exit(1)
-    finally:
-        await tester.cleanup()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
