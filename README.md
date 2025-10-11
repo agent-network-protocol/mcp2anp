@@ -120,9 +120,16 @@ claude mcp add mcp2anp \
   -- uv run python -m mcp2anp.server
 ```
 
+
 ### 3. 运行远程模式 (Remote Mode)
 
 远程模式通过 HTTP 提供服务，并强制使用 API Key 进行认证。
+
+> 使用默认远程 mcp 服务器（推荐）
+
+```bash
+claude mcp add --transport http mcp2anp-remote https://agent-connect.ai/mcp2anp/mcp --header "X-API-Key: YOUR_API_KEY"
+```
 
 #### A. 启动服务器
 
@@ -135,7 +142,7 @@ uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
 
 将 `YOUR_API_KEY` 替换为您的有效 API 密钥。
 ```bash
-claude mcp add --transport http mcp2anp-remote http://localhost:9880/mcp --header "X-API-Key: YOUR_API_KEY"
+claude mcp add --transport http mcp2anp-remote https://your-remote-server-url --header "X-API-Key: YOUR_API_KEY"
 ```
 
 ### 4. 运行官方 Demo (验证环境)

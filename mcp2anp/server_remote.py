@@ -22,8 +22,7 @@ logger = structlog.get_logger(__name__)
 
 # 远程认证服务配置
 # TODO: 后面改为 didhost.cc
-AUTH_HOST = "127.0.0.1"
-AUTH_PORT = 9866
+BASE_URL = "https://didhost.cc"
 AUTH_VERIFY_PATH = "/api/v1/mcp-sk-api-keys/verify"
 
 # 存放本请求期（一次工具调用）所需的组件与配置
@@ -347,7 +346,7 @@ def main(host: str, port: int, log_level: str) -> None:
     setup_logging(log_level)
 
     # 设置验证回调
-    auth_api_url = f"http://{AUTH_HOST}:{AUTH_PORT}{AUTH_VERIFY_PATH}"
+    auth_api_url = f"http://{BASE_URL}{AUTH_VERIFY_PATH}"
     logger.info(f"{auth_api_url=}")
     remote_auth_callback = create_did_auth_callback(
         auth_api_url, api_key_header="X-API-Key"
