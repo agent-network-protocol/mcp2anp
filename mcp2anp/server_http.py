@@ -6,9 +6,9 @@ import logging
 import random
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Any
 
+import click
 import httpx
 import structlog
 import uvicorn
@@ -26,8 +26,6 @@ from .core.handlers import ANPHandler
 
 
 class Settings(BaseSettings):
-    # TODO：
-    # click 设置相关配置
     # HTTP server
     host: str = "0.0.0.0"
     port: int = 9880
@@ -40,9 +38,12 @@ class Settings(BaseSettings):
     auth_timeout_s: float = 15.0
 
 
-@lru_cache(maxsize=1)
+_settings_override: dict[str, Any] = {}
+
+
 def get_settings() -> Settings:
-    return Settings()
+    """Return settings with CLI overrides."""
+    return Settings(**_settings_override)
 
 
 SENSITIVE_KEYS = {"X-API-Key", "private_pem_path", "did_doc_path"}
@@ -147,7 +148,7 @@ app = FastAPI(
     summary="Expose ANP tools via FastAPI: anp.fetchDoc & anp.invokeOpenRPC",
     description=(
         "这是一个 ANP 网络的 FastAPI 服务器包装层。"
-        "你可以通过 /tools/anp.fetchDoc 抓取文档，通过 /tools/anp.invokeOpenRPC 调用 OpenRPC 接口。"
+        "你可以通过 /http2anp/anp.fetchDoc 抓取文档，通过 /http2anp/anp.invokeOpenRPC 调用 OpenRPC 接口。"
         "所有请求必须通过 X-API-Key 进行远程鉴权。"
     ),
     lifespan=lifespan,
@@ -248,7 +249,7 @@ async def verify_api_key(
         logger.warning("Missing API key header")
         raise AuthFailure("Missing X-API-Key")
 
-    verify_url = f"http://{settings.auth_base_url}{settings.auth_verify_path}"
+    verify_url = f"{settings.auth_base_url}{settings.auth_verify_path}"
     logger.info(
         "verifying api key",
         verify_url=verify_url,
@@ -313,7 +314,7 @@ async def get_components(cfg: SessionConfig = Depends(verify_api_key)) -> Compon
 
 
 @app.post(
-    "/tools/anp.fetchDoc", response_model=ToolEnvelope, summary="抓取并解析 ANP 文档"
+    "/http2anp/anp.fetchDoc", response_model=ToolEnvelope, summary="抓取并解析 ANP 文档"
 )
 async def anp_fetch_doc(
     payload: FetchDocIn, comps: Components = Depends(get_components)
@@ -342,7 +343,9 @@ async def anp_fetch_doc(
 
 
 @app.post(
-    "/tools/anp.invokeOpenRPC", response_model=ToolEnvelope, summary="调用 OpenRPC 接口"
+    "/http2anp/anp.invokeOpenRPC",
+    response_model=ToolEnvelope,
+    summary="调用 OpenRPC 接口",
 )
 async def anp_invoke_openrpc(
     payload: InvokeOpenRPCIn, comps: Components = Depends(get_components)
@@ -381,8 +384,27 @@ async def anp_invoke_openrpc(
 # --------------------------------------------------------------------------- #
 
 
-def run() -> None:
+@click.command()
+@click.option(
+    "--host",
+    default="0.0.0.0",
+    help="服务器监听地址",
+)
+@click.option(
+    "--port",
+    default=9880,
+    type=int,
+    help="服务器监听端口",
+)
+@click.option(
+    "--log-level",
+    default="INFO",
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
+    help="设置日志级别",
+)
+def main(host: str, port: int, log_level: str) -> None:
     """CLI entry to launch the server with configured logging."""
+    _settings_override.update(host=host, port=port, log_level=log_level)
     settings = get_settings()
     setup_logging(settings.log_level)
     logger.info("starting server", host=settings.host, port=settings.port)
@@ -397,4 +419,4 @@ def run() -> None:
 
 
 if __name__ == "__main__":
-    run()
+    main()

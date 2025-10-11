@@ -17,8 +17,8 @@ uvicorn** 的远程服务器，并实现远程 API Key 认证与 ANP 工具接�
 3.  **工具接口**\
     服务器暴露两个主要工具：
 
-    -   `/tools/anp.fetchDoc`: 抓取 ANP 文档。
-    -   `/tools/anp.invokeOpenRPC`: 调用 OpenRPC 接口。
+    -   `/http2anp/anp.fetchDoc`: 抓取 ANP 文档。
+    -   `/http2anp/anp.invokeOpenRPC`: 调用 OpenRPC 接口。
 
 ------------------------------------------------------------------------
 
@@ -50,7 +50,7 @@ uv run python -m mcp2anp.server_http --host 0.0.0.0 --port 9880
 ### 第 3 步：测试 API
 
 ``` bash
-curl -X POST http://localhost:9880/tools/anp.fetchDoc \
+curl -X POST http://localhost:9880/http2anp/anp.fetchDoc \
      -H "X-API-Key: YOUR_VALID_API_KEY" \
      -H "Content-Type: application/json" \
      -d '{"url": "https://agent-navigation.com/ad.json"}'
@@ -103,10 +103,10 @@ async def verify_api_key(request: Request, settings: Settings = Depends(get_sett
 
 ### 工具接口
 
-#### `/tools/anp.fetchDoc`
+#### `/http2anp/anp.fetchDoc`
 
 ``` python
-@app.post("/tools/anp.fetchDoc")
+@app.post("/http2anp/anp.fetchDoc")
 async def anp_fetch_doc(payload: FetchDocIn, comps: Components = Depends(get_components)):
     result = await comps.anp_handler.handle_fetch_doc({"url": str(payload.url)})
     return ToolEnvelope(ok=True, data=result)
@@ -117,10 +117,10 @@ async def anp_fetch_doc(payload: FetchDocIn, comps: Components = Depends(get_com
 
 ------------------------------------------------------------------------
 
-#### `/tools/anp.invokeOpenRPC`
+#### `/http2anp/anp.invokeOpenRPC`
 
 ``` python
-@app.post("/tools/anp.invokeOpenRPC")
+@app.post("/http2anp/anp.invokeOpenRPC")
 async def anp_invoke_openrpc(payload: InvokeOpenRPCIn, comps: Components = Depends(get_components)):
     result = await comps.anp_handler.handle_invoke_openrpc(args)
     return ToolEnvelope(ok=True, data=result)

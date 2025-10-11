@@ -4,11 +4,11 @@
 不使用环境变量，全部硬编码。
 
 覆盖：
-1) 有效密钥 -> /tools/anp.fetchDoc 放行 (HTTP 200)
+1) 有效密钥 -> /http2anp/anp.fetchDoc 放行 (HTTP 200)
 2) 缺失密钥 -> 401
 3) 无效密钥 -> 401
 4) 非法请求体验证 -> 422
-5) （可选）/tools/anp.invokeOpenRPC 成功路径（默认跳过，依赖外部 OpenRPC 端点）
+5) （可选）/http2anp/anp.invokeOpenRPC 成功路径（默认跳过，依赖外部 OpenRPC 端点）
 """
 
 from __future__ import annotations
@@ -19,9 +19,10 @@ import httpx
 import pytest
 
 # ---------------------- 硬编码配置 ----------------------
+# BASE_URL = "https://didhost.cc"  # 已运行的后端地址
+BASE_URL = "http://localhost:9880"
 API_KEY_HEADER = "X-API-Key"
-BASE_URL = "http://0.0.0.0:9880"  # 已运行的后端地址
-VALID_KEY = "sk_mcp_MW4O4-FECAP-WQPHF-DHIPR-HV7CK-KU2ED-OOB3E-6OVQD-ZA"
+VALID_KEY = "sk_mcp_F3CXQ-VAOYL-34AOH-GQ5LS-UVTV2-VUPMI-B6XHX-CJDOJ-AM"
 
 
 @pytest.fixture(scope="session")
@@ -33,14 +34,14 @@ def base_url() -> str:
 def _server_reachable(base_url):
     """
     会话级探活：如果服务器不可达，则跳过整个测试套。
-    首选探测 /openapi.json；若不存在则尝试 OPTIONS /tools/anp.fetchDoc。
+    首选探测 /openapi.json；若不存在则尝试 OPTIONS /http2anp/anp.fetchDoc。
     """
     try:
         with httpx.Client(base_url=base_url, timeout=2.0, trust_env=False) as c:
             r = c.get("/openapi.json")
             if r.status_code < 500:
                 return
-            r = c.options("/tools/anp.fetchDoc")
+            r = c.options("/http2anp/anp.fetchDoc")
             if r.status_code < 500:
                 return
     except Exception as e:
@@ -53,7 +54,7 @@ async def client(base_url):
         yield c
 
 
-# ---------------------- 用例：anp.fetchDoc（参数化鉴权） ----------------------
+# ---------------------- 用例：http2anp.fetchDoc（参数化鉴权） ----------------------
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "case,headers,expect_status,expect_ok",
@@ -67,7 +68,7 @@ async def test_fetch_doc_auth_cases(
     client: httpx.AsyncClient, case, headers, expect_status, expect_ok
 ):
     r = await client.post(
-        "/tools/anp.fetchDoc",
+        "/http2anp/anp.fetchDoc",
         headers=headers,
         json={"url": "https://agent-navigation.com/ad.json"},
     )
@@ -90,7 +91,7 @@ async def test_fetch_doc_auth_cases(
 @pytest.mark.asyncio
 async def test_fetch_doc_validation_error(client: httpx.AsyncClient):
     r = await client.post(
-        "/tools/anp.fetchDoc",
+        "/http2anp/anp.fetchDoc",
         headers={API_KEY_HEADER: VALID_KEY},
         json={"url": "not-a-url"},
     )
@@ -105,7 +106,7 @@ async def test_fetch_doc_validation_error(client: httpx.AsyncClient):
     )
 
 
-# ---------------------- 用例：anp.invokeOpenRPC（成功路径，可选） ----------------------
+# ---------------------- 用例：http2anp.invokeOpenRPC（成功路径，可选） ----------------------
 @pytest.mark.asyncio
 async def test_invoke_openrpc_success(client: httpx.AsyncClient):
     payload: dict[str, Any] = {
@@ -115,7 +116,7 @@ async def test_invoke_openrpc_success(client: httpx.AsyncClient):
         "id": "req-1",
     }
     r = await client.post(
-        "/tools/anp.invokeOpenRPC",
+        "/http2anp/anp.invokeOpenRPC",
         headers={API_KEY_HEADER: VALID_KEY},
         json=payload,
     )
