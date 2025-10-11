@@ -1,6 +1,5 @@
 """共享的工具处理函数。"""
 
-import json
 import os
 from pathlib import Path
 from typing import Any
@@ -55,16 +54,16 @@ class ANPHandler:
                 "ok": True,
                 "contentType": content_result.get("content_type", "application/json"),
                 "text": content_result.get("content", ""),
-                "links": links,
+                # "interfaces": links,
             }
 
             # 如果内容是 JSON，尝试解析
-            try:
-                if content_result.get("content"):
-                    json_data = json.loads(content_result["content"])
-                    result["json"] = json_data
-            except json.JSONDecodeError:
-                pass  # 不是 JSON 内容，跳过
+            # try:
+            #     if content_result.get("content"):
+            #         json_data = json.loads(content_result["content"])
+            #         result["json"] = json_data
+            # except json.JSONDecodeError:
+            #     pass  # 不是 JSON 内容，跳过
 
             logger.info("Document fetched successfully", url=request.url, links_count=len(links))
             return result
