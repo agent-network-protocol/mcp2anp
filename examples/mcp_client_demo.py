@@ -24,8 +24,13 @@ ANP_DOMAIN = "https://agent-connect.ai"
 
 # Configure DID credentials using absolute paths
 project_root = Path(__file__).parent.parent
-os.environ["ANP_DID_DOCUMENT_PATH"] = str(project_root / "docs" / "did_public" / "public-did-doc.json")
-os.environ["ANP_DID_PRIVATE_KEY_PATH"] = str(project_root / "docs" / "did_public" / "public-private-key.pem")
+os.environ["ANP_DID_DOCUMENT_PATH"] = str(
+    project_root / "docs" / "did_public" / "public-did-doc.json"
+)
+os.environ["ANP_DID_PRIVATE_KEY_PATH"] = str(
+    project_root / "docs" / "did_public" / "public-private-key.pem"
+)
+
 
 async def demo_basic_usage():
     """演示基本用法"""
@@ -34,9 +39,7 @@ async def demo_basic_usage():
 
     # 配置 MCP 服务器参数
     server_params = StdioServerParameters(
-        command="uv",
-        args=["run", "python", "-m", "mcp2anp.server"],
-        env=None
+        command="uv", args=["run", "python", "-m", "mcp2anp.server"], env=None
     )
 
     # 使用 MCP SDK 的 stdio_client 连接服务器
@@ -58,19 +61,18 @@ async def demo_basic_usage():
             print(f"测试 URL: {test_url}")
             try:
                 result = await session.call_tool(
-                    "anp.fetchDoc",
-                    arguments={"url": test_url}
+                    "anp.fetchDoc", arguments={"url": test_url}
                 )
                 print("\nfetchDoc 结果:")
                 for content in result.content:
                     content_dict = content.model_dump()
-                    if content_dict.get('type') == 'text':
+                    if content_dict.get("type") == "text":
                         # 尝试解析并美化 JSON 响应
                         try:
-                            text_data = json.loads(content_dict.get('text', '{}'))
+                            text_data = json.loads(content_dict.get("text", "{}"))
                             print(json.dumps(text_data, indent=2, ensure_ascii=False))
                         except json.JSONDecodeError:
-                            print(content_dict.get('text'))
+                            print(content_dict.get("text"))
             except Exception as e:
                 print(f"调用 fetchDoc 失败: {e}")
                 print(f"提示: 请确保本地 ANP 服务器正在运行 (ANP_DOMAIN: {ANP_DOMAIN})")
@@ -87,18 +89,18 @@ async def demo_basic_usage():
                     arguments={
                         "endpoint": jsonrpc_endpoint,
                         "method": "echo",
-                        "params": {"message": test_message}
-                    }
+                        "params": {"message": test_message},
+                    },
                 )
                 print("\necho 方法调用结果:")
                 for content in rpc_result.content:
                     content_dict = content.model_dump()
-                    if content_dict.get('type') == 'text':
+                    if content_dict.get("type") == "text":
                         try:
-                            text_data = json.loads(content_dict.get('text', '{}'))
+                            text_data = json.loads(content_dict.get("text", "{}"))
                             print(json.dumps(text_data, indent=2, ensure_ascii=False))
                         except json.JSONDecodeError:
-                            print(content_dict.get('text'))
+                            print(content_dict.get("text"))
             except Exception as e:
                 print(f"调用 echo 方法失败: {e}")
                 print(f"提示: 请确保本地 ANP 服务器正在运行 (ANP_DOMAIN: {ANP_DOMAIN})")
@@ -112,23 +114,21 @@ async def demo_basic_usage():
                     arguments={
                         "endpoint": jsonrpc_endpoint,
                         "method": "getStatus",
-                        "params": {}
-                    }
+                        "params": {},
+                    },
                 )
                 print("\ngetStatus 方法调用结果:")
                 for content in status_result.content:
                     content_dict = content.model_dump()
-                    if content_dict.get('type') == 'text':
+                    if content_dict.get("type") == "text":
                         try:
-                            text_data = json.loads(content_dict.get('text', '{}'))
+                            text_data = json.loads(content_dict.get("text", "{}"))
                             print(json.dumps(text_data, indent=2, ensure_ascii=False))
                         except json.JSONDecodeError:
-                            print(content_dict.get('text'))
+                            print(content_dict.get("text"))
             except Exception as e:
                 print(f"调用 getStatus 方法失败: {e}")
                 print(f"提示: 请确保本地 ANP 服务器正在运行 (ANP_DOMAIN: {ANP_DOMAIN})")
-
-
 
 
 async def main():
@@ -141,7 +141,7 @@ async def main():
             structlog.stdlib.add_logger_name,
             structlog.stdlib.add_log_level,
             structlog.stdlib.PositionalArgumentsFormatter(),
-            structlog.dev.ConsoleRenderer()
+            structlog.dev.ConsoleRenderer(),
         ],
         wrapper_class=structlog.stdlib.BoundLogger,
         logger_factory=structlog.stdlib.LoggerFactory(),
