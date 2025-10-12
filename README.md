@@ -27,9 +27,9 @@ MCP2ANP 是一个 **MCP 桥接服务器**，将 ANP (Agent Network Protocol) 的
 > ⚠️ **重要提示：两种模式的认证方式完全不同！**
 >
 > -   **本地模式**：认证信息通过**环境变量**或**默认本地 DID 文件**在启动时加载，整个服务进程使用单一的 DID 身份。
-> -   **远程模式**：认证通过客户端请求中的 **`X-API-Key`** 请求头进行，每个会话独立认证，支持多用户。
+> -   **远程模式**：认证通过客户端请求中的 **`X-API-Key`** 请求头进行（字段名大小写不敏感），每个会话独立认证，支持多用户。
 
-详见 [远程服务器文档](docs/REMOTE_SERVER.md)
+详见 [远程服务器文档](docs/server_remote.md)
 
 ## 架构设计
 
@@ -100,7 +100,7 @@ uv sync
 
 ```bash
 # 使用默认的公共 DID 凭证启动
-uv run mcp2anp local --log-level INFO
+uv run python -m mcp2anp.server --log-level INFO
 ```
 
 如需使用自定义 DID，请在启动前设置环境变量：
@@ -142,7 +142,14 @@ uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
 
 将 `YOUR_API_KEY` 替换为您的有效 API 密钥。
 ```bash
-claude mcp add --transport http mcp2anp-remote https://your-remote-server-url --header "X-API-Key: YOUR_API_KEY"
+claude mcp add --transport http mcp2anp-remote https://your-remote-server-url/mcp --header "X-API-Key: YOUR_API_KEY"
+```
+
+获取 API Key：请访问 `https://didhost.cc` 申请并管理您的 API Key。可用下述命令自检密钥是否有效（需安装 `jq`）：
+
+```bash
+curl -sS -H "X-API-Key: YOUR_API_KEY" \
+  "https://didhost.cc/api/v1/mcp-sk-api-keys/verify" | jq .
 ```
 
 ### 4. 运行官方 Demo (验证环境)

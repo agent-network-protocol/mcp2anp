@@ -5,7 +5,7 @@
 ## 核心概念
 
 1.  **HTTP 服务**: 远程服务器是一个 HTTP 服务。
-2.  **强制认证**: 所有请求都**必须**在请求头中提供一个有效的 `X-API-Key`。
+2.  **强制认证**: 所有请求都**必须**在请求头中提供一个有效的 `X-API-Key`（字段名大小写不敏感，`X-API-Key` 与 `x-api-key` 等价）。
 3.  **外部验证**: 服务器会使用您提供的 API Key，连接一个外部服务来完成认证。
 
 ---
@@ -47,6 +47,29 @@ curl -X POST http://localhost:9880/mcp \
 ```bash
 claude mcp add --transport http mcp2anp-remote http://localhost:9880/mcp --header "X-API-Key: YOUR_VALID_API_KEY"
 ```
+
+---
+
+## 认证服务与配置
+
+- 远程认证默认配置：
+  - `BASE_URL = "https://didhost.cc"`
+  - `AUTH_VERIFY_PATH = "/api/v1/mcp-sk-api-keys/verify"`
+- 服务器在每次工具调用前，会读取请求头中的 `X-API-Key`（大小写不敏感），调用 `${BASE_URL}${AUTH_VERIFY_PATH}` 完成鉴权。
+- 如果您在自有环境中部署了认证服务，请修改源码中相应常量，或在后续版本使用配置项覆盖。
+
+---
+
+## 如何获取 API Key
+
+您可以在 `https://didhost.cc` 申请并管理您的 API Key。完成后，可通过以下命令快速验证 API Key 是否有效（将占位值替换为您的真实密钥）：
+
+```bash
+curl -sS -H "X-API-Key: YOUR_VALID_API_KEY" \
+  "https://didhost.cc/api/v1/mcp-sk-api-keys/verify" | jq .
+```
+
+若返回包含 `did_doc_path` 与 `private_pem_path` 等字段，即表示可用于本项目的远程模式认证。
 
 ---
 

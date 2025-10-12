@@ -17,8 +17,8 @@ uvicorn** 的远程服务器，并实现远程 API Key 认证与 ANP 工具接�
 3.  **工具接口**\
     服务器暴露两个主要工具：
 
-    -   `/http2anp/anp.fetchDoc`: 抓取 ANP 文档。
-    -   `/http2anp/anp.invokeOpenRPC`: 调用 OpenRPC 接口。
+    -   `/anp.fetchDoc`: 抓取 ANP 文档。
+    -   `/anp.invokeOpenRPC`: 调用 OpenRPC 接口。
 
 ------------------------------------------------------------------------
 
@@ -42,7 +42,7 @@ uvicorn** 的远程服务器，并实现远程 API Key 认证与 ANP 工具接�
 运行命令：
 
 ``` bash
-uv run python -m mcp2anp.server_http --host 0.0.0.0 --port 9880
+uv run python -m mcp2anp.server_http --host 0.0.0.0 --port 9881
 ```
 
 ------------------------------------------------------------------------
@@ -50,7 +50,7 @@ uv run python -m mcp2anp.server_http --host 0.0.0.0 --port 9880
 ### 第 3 步：测试 API
 
 ``` bash
-curl -X POST http://localhost:9880/http2anp/anp.fetchDoc \
+curl -X POST http://localhost:9881/anp.fetchDoc \
      -H "X-API-Key: YOUR_VALID_API_KEY" \
      -H "Content-Type: application/json" \
      -d '{"url": "https://agent-navigation.com/ad.json"}'
@@ -72,10 +72,12 @@ curl -X POST http://localhost:9880/http2anp/anp.fetchDoc \
 ``` python
 class Settings(BaseSettings):
     host: str = "0.0.0.0"
-    port: int = 9880
-    auth_host: str = "127.0.0.1"
-    auth_port: int = 9866
+    port: int = 9881
+    log_level: str = "INFO"
+    auth_base_url: str = "https://didhost.cc"
     auth_verify_path: str = "/api/v1/mcp-sk-api-keys/verify"
+    api_key_header: str = "X-API-Key"
+    auth_timeout_s: float = 15.0
 ```
 
 > 可通过环境变量或 `.env` 文件进行覆盖。
@@ -103,10 +105,10 @@ async def verify_api_key(request: Request, settings: Settings = Depends(get_sett
 
 ### 工具接口
 
-#### `/http2anp/anp.fetchDoc`
+#### `/anp.fetchDoc`
 
 ``` python
-@app.post("/http2anp/anp.fetchDoc")
+@app.post("/anp.fetchDoc")
 async def anp_fetch_doc(payload: FetchDocIn, comps: Components = Depends(get_components)):
     result = await comps.anp_handler.handle_fetch_doc({"url": str(payload.url)})
     return ToolEnvelope(ok=True, data=result)
@@ -117,10 +119,10 @@ async def anp_fetch_doc(payload: FetchDocIn, comps: Components = Depends(get_com
 
 ------------------------------------------------------------------------
 
-#### `/http2anp/anp.invokeOpenRPC`
+#### `/anp.invokeOpenRPC`
 
 ``` python
-@app.post("/http2anp/anp.invokeOpenRPC")
+@app.post("/anp.invokeOpenRPC")
 async def anp_invoke_openrpc(payload: InvokeOpenRPCIn, comps: Components = Depends(get_components)):
     result = await comps.anp_handler.handle_invoke_openrpc(args)
     return ToolEnvelope(ok=True, data=result)

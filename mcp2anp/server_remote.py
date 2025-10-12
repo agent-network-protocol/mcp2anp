@@ -57,12 +57,6 @@ def set_auth_callback(callback: AuthCallback | None) -> None:
     logger.info("Auth callback set", has_callback=callback is not None)
 
 
-class DidAuthResponse(BaseModel):
-    """远程认证服务响应模型。"""
-
-    did: str
-    did_doc_path: str
-    private_pem_path: str
 
 
 def create_did_auth_callback(
