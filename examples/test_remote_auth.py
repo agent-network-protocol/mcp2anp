@@ -31,15 +31,16 @@ import click
 import structlog
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
+from dataclasses import dataclass
 
 # --- 全局配置 ---
 logger = structlog.get_logger(__name__)
 
 MCP_HOST = "127.0.0.1"
-# Note: port is not needed for stdio client, but we pass it for consistency
 MCP_PORT = 9880
-
-DEFAULT_API_KEY = "sk_mcp_MW4O4-FECAP-WQPHF-DHIPR-HV7CK-KU2ED-OOB3E-6OVQD-ZA"
+# MCP_URL = f"http://{MCP_HOST}:{MCP_PORT}"
+MCP_URL = "https://agent-connect.ai/mcp2anp/mcp"
+DEFAULT_API_KEY = "sk_mcp_6OIGY-42ZVG-4H2NU-CCI3L-IVHUV-6XWTI-5CY7I-K4CDW-54"
 
 
 # --- 集成测试器 ---

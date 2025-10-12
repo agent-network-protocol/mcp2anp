@@ -28,7 +28,7 @@ from .core.handlers import ANPHandler
 class Settings(BaseSettings):
     # HTTP server
     host: str = "0.0.0.0"
-    port: int = 9880
+    port: int = 9881
     log_level: str = "INFO"
 
     # Remote auth service
@@ -148,7 +148,7 @@ app = FastAPI(
     summary="Expose ANP tools via FastAPI: anp.fetchDoc & anp.invokeOpenRPC",
     description=(
         "这是一个 ANP 网络的 FastAPI 服务器包装层。"
-        "你可以通过 /http2anp/anp.fetchDoc 抓取文档，通过 /http2anp/anp.invokeOpenRPC 调用 OpenRPC 接口。"
+        "你可以通过 /anp.fetchDoc 抓取文档，通过 /anp.invokeOpenRPC 调用 OpenRPC 接口。"
         "所有请求必须通过 X-API-Key 进行远程鉴权。"
     ),
     lifespan=lifespan,
@@ -314,7 +314,7 @@ async def get_components(cfg: SessionConfig = Depends(verify_api_key)) -> Compon
 
 
 @app.post(
-    "/http2anp/anp.fetchDoc", response_model=ToolEnvelope, summary="抓取并解析 ANP 文档"
+    "/anp.fetchDoc", response_model=ToolEnvelope, summary="抓取并解析 ANP 文档"
 )
 async def anp_fetch_doc(
     payload: FetchDocIn, comps: Components = Depends(get_components)
@@ -343,7 +343,7 @@ async def anp_fetch_doc(
 
 
 @app.post(
-    "/http2anp/anp.invokeOpenRPC",
+    "/anp.invokeOpenRPC",
     response_model=ToolEnvelope,
     summary="调用 OpenRPC 接口",
 )
@@ -392,7 +392,7 @@ async def anp_invoke_openrpc(
 )
 @click.option(
     "--port",
-    default=9880,
+    default=9881,
     type=int,
     help="服务器监听端口",
 )

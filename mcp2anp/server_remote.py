@@ -3,6 +3,7 @@
 import json
 from collections.abc import Callable
 from typing import Any
+from weakref import WeakKeyDictionary
 
 import click
 import httpx
@@ -13,6 +14,7 @@ from fastmcp import Context, FastMCP
 from fastmcp.server.dependencies import (
     get_http_headers,  # 读取请求头
 )
+from dataclasses import dataclass
 from pydantic import BaseModel, ValidationError
 
 from .core.handlers import ANPHandler
@@ -25,17 +27,21 @@ logger = structlog.get_logger(__name__)
 BASE_URL = "https://didhost.cc"
 AUTH_VERIFY_PATH = "/api/v1/mcp-sk-api-keys/verify"
 
-# 存放本请求期（一次工具调用）所需的组件与配置
-STATE_KEY = "mcp2anp"
+# 每个会话独立的状态存储，键为 ServerSession（弱引用，随会话回收）
+SESSION_STORE: WeakKeyDictionary[Any, dict[str, Any]] = WeakKeyDictionary()
 
 
+@dataclass(frozen=True, slots=True)
 class SessionConfig:
-    """会话配置信息：存储会话所需的 DID 凭证路径。"""
+    """会话所需的 DID 凭证路径。"""
+    did_document_path: str
+    private_key_path: str
 
-    def __init__(self, did_document_path: str, private_key_path: str):
-        self.did_document_path = did_document_path
-        self.private_key_path = private_key_path
-
+class DidAuthResponse(BaseModel):
+    """远程认证服务响应模型。"""
+    did: str
+    did_doc_path: str
+    private_pem_path: str
 
 # 鉴权回调函数类型（接收 token 字符串，返回 SessionConfig 或 None）
 AuthCallback = Callable[[str], SessionConfig | None]
@@ -117,19 +123,29 @@ def create_did_auth_callback(
 
 
 def _get_state(ctx: Context) -> dict[str, Any]:
-    st = ctx.get_state(STATE_KEY)
-    if st is None:
-        st = {}
-        ctx.set_state(STATE_KEY, st)
-    return st
+    """获取当前调用上下文关联的状态字典。
+
+    优先基于会话对象（ctx.session）进行隔离存储；
+    不再提供非会话环境的回退，要求 fastmcp 提供有效的 ctx.session。
+    """
+    session = getattr(ctx, "session", None)
+    if session is None:
+        raise RuntimeError("FastMCP session is required on Context; ctx.session is missing")
+
+    state = SESSION_STORE.get(session)
+    if state is None:
+        state = {}
+        SESSION_STORE[session] = state
+    return state
 
 
 def authenticate_and_get_config() -> SessionConfig | None:
     """从请求头中提取 token，并调用回调完成鉴权，返回会话配置。"""
 
     headers: dict[str, str] = get_http_headers()  # 默认剔除不宜转发的头
-
-    api_key = headers.get("X-API-Key")
+    # HTTP 头字段名大小写不敏感：统一转小写后查找
+    lowered = {k.lower(): v for k, v in headers.items()}
+    api_key = lowered.get("x-api-key")
     token: str | None = None
 
     if api_key:
@@ -346,7 +362,7 @@ def main(host: str, port: int, log_level: str) -> None:
     setup_logging(log_level)
 
     # 设置验证回调
-    auth_api_url = f"http://{BASE_URL}{AUTH_VERIFY_PATH}"
+    auth_api_url = f"{BASE_URL}{AUTH_VERIFY_PATH}"
     logger.info(f"{auth_api_url=}")
     remote_auth_callback = create_did_auth_callback(
         auth_api_url, api_key_header="X-API-Key"
@@ -356,8 +372,8 @@ def main(host: str, port: int, log_level: str) -> None:
     logger.info("Starting MCP2ANP remote server", host=host, port=port)
 
     try:
-        app = app = mcp.http_app()
-        uvicorn.run(app, host=host, port=port, log_level=log_level.lower(), ws="none")
+        app = mcp.streamable_http_app()
+        uvicorn.run(app, host=host, port=port, log_level=log_level.lower())
     except KeyboardInterrupt:
         logger.info("Server shutdown requested")
     except Exception as e:
