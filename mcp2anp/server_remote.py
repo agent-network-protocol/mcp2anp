@@ -282,7 +282,7 @@ async def anp_invokeOpenRPC(
     params: Any = None,
     request_id: str | None = None,
 ) -> str:
-    """使用 JSON-RPC 2.0 协议调用 OpenRPC 端点上的方法。
+    """使用 ANP的 JSON-RPC 2.0 协议调用 OpenRPC 端点上的方法。
 
     此工具处理与暴露 OpenRPC 接口的 ANP 智能体的结构化交互。
 
