@@ -10,7 +10,7 @@ import click
 import httpx
 import structlog
 import uvicorn
-from agent_connect.anp_crawler.anp_crawler import ANPCrawler
+from anp.anp_crawler.anp_crawler import ANPCrawler
 from fastmcp import Context, FastMCP
 from fastmcp.server.dependencies import (
     get_http_headers,  # 读取请求头

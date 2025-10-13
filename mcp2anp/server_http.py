@@ -12,7 +12,7 @@ import click
 import httpx
 import structlog
 import uvicorn
-from agent_connect.anp_crawler.anp_crawler import ANPCrawler
+from anp.anp_crawler.anp_crawler import ANPCrawler
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, HttpUrl, ValidationError

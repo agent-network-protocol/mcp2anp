@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from agent_connect.anp_crawler.anp_crawler import ANPCrawler
+from anp.anp_crawler.anp_crawler import ANPCrawler
 
 from ..utils import models
 
@@ -107,9 +107,6 @@ class ANPHandler:
                     },
                 }
 
-            # 构建工具名称（ANPCrawler 需要这种格式）
-            tool_name = f"{request.method}"
-
             # 调用工具
             if request.params is None:
                 tool_params = {}
@@ -121,7 +118,7 @@ class ANPHandler:
             else:
                 tool_params = {"value": request.params}
 
-            result = await self.anp_crawler.execute_tool_call(tool_name, tool_params)
+            result = await self.anp_crawler.execute_json_rpc(request.endpoint, request.method, tool_params)
 
             logger.info("OpenRPC method invoked successfully", method=request.method)
             return {
