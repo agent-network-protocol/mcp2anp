@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 from weakref import WeakKeyDictionary
 
@@ -14,7 +15,6 @@ from fastmcp import Context, FastMCP
 from fastmcp.server.dependencies import (
     get_http_headers,  # 读取请求头
 )
-from dataclasses import dataclass
 from pydantic import BaseModel, ValidationError
 
 from .core.handlers import ANPHandler
