@@ -7,7 +7,8 @@
 
 ## 项目简介
 
-MCP2ANP 面向 Claude Desktop、Cursor 等 MCP 客户端，将 ANP（Agent Network Protocol）的“爬虫式”交互流程映射成 MCP 工具调用，免去客户端改造。桥接层提供两个工具：`anp.fetchDoc` 负责探索，`anp.invokeOpenRPC` 负责执行。
+MCP2ANP 面向 Claude Desktop、Cursor 等 MCP 客户端，将 ANP（Agent Network Protocol）的“爬虫式”交互流程映射成 MCP 工具调用，免去客户端改造。
+桥接层提供两个工具：`anp.fetchDoc` 负责探索，`anp.invokeOpenRPC` 负责执行。
 
 ## 核心特性
 
@@ -61,6 +62,11 @@ flowchart LR
 - [uv](https://github.com/astral-sh/uv) 作为依赖管理工具
 - ANP DID 文档与私钥（可先使用 `docs/did_public/` 示例）
 - 远程模式需可用的 API Key 发放/校验服务
+#### API Key 生成步骤
+
+1. 访问 didhost.cc 并登录账户。
+2. 新建 DID Card，在创建流程中勾选“生成 API Key”。
+> *注:* 将生成的私钥与 API Key 安全保存；它们仅显示一次，丢失后无法恢复。
 
 ## 快速上手
 
@@ -110,6 +116,7 @@ flowchart LR
      "https://didhost.cc/api/v1/mcp-sk-api-keys/verify" | jq .
    ```
 
+
 4. **运行官方 Demo**
 
    ```bash
@@ -156,7 +163,6 @@ uvx --from . pytest --maxfail=1
 ## 更多资料
 
 - 远程部署说明：`docs/server_remote.md`
-- 协议背景及草案：`spec.md`
 - 示例载荷：`docs/examples/`
 - 客户端脚本与迁移说明：`examples/`
 
