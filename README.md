@@ -7,7 +7,7 @@
 
 ## 项目简介
 
-MCP2ANP 面向 Claude Desktop、Cursor 等 MCP 客户端，将 ANP（Agent Network Protocol）的“爬虫式”交互流程映射成 MCP 工具调用，免去客户端改造。
+MCP2ANP 面向 Claude 、Cursor 等 MCP 客户端，将 ANP（Agent Network Protocol）的“爬虫式”交互流程映射成 MCP 工具调用，免去客户端改造。
 桥接层提供两个工具：`anp.fetchDoc` 负责探索，`anp.invokeOpenRPC` 负责执行。
 
 ## 核心特性
@@ -20,10 +20,10 @@ MCP2ANP 面向 Claude Desktop、Cursor 等 MCP 客户端，将 ANP（Agent Netwo
 
 ## 运行模式速览
 
-| 模式 | 传输方式 | 认证方式 | 典型场景 |
-| --- | --- | --- | --- |
-| 本地 stdio | stdin/stdout | 环境变量或默认 DID 文件 | 桌面客户端、单机调试 |
-| 远程 HTTP | FastMCP HTTP | Header 中的 `X-API-Key` | 多租户服务端、共享实例 |
+| 模式       | 传输方式     | 认证方式                | 典型场景               |
+| ---------- | ------------ | ----------------------- | ---------------------- |
+| 远程 HTTP  | FastMCP HTTP | Header 中的 `X-API-Key` | 多租户服务端、共享实例 |
+| 本地 stdio | stdin/stdout | 环境变量或默认 DID 文件 | 桌面客户端、单机调试   |
 
 ## 架构设计
 
@@ -56,21 +56,31 @@ flowchart LR
 
 本地模式将 `server.py` 通过 stdio 暴露为 MCP 工具；远程模式则由 `server_remote.py` 基于 FastMCP HTTP 端口化，并在请求头中完成 API Key → DID 凭证映射。无论模式如何，工具调用最终都通过 `agent-connect` 客户端对接 ANP 网络。
 
-## 先决条件
-
-- Python 3.11+
-- [uv](https://github.com/astral-sh/uv) 作为依赖管理工具
-- ANP DID 文档与私钥（可先使用 `docs/did_public/` 示例）
-- 远程模式需可用的 API Key 发放/校验服务
-#### API Key 生成步骤
-
-1. 访问 didhost.cc 并登录账户。
-2. 新建 DID Card，在创建流程中勾选“生成 API Key”。
-> *注:* 将生成的私钥与 API Key 安全保存；它们仅显示一次，丢失后无法恢复。
 
 ## 快速上手
 
-1. **安装依赖**
+### 1. **使用官方托管端点（推荐，无需安装）**
+
+   ```bash
+   claude mcp add --transport http mcp2anp-remote https://agent-connect.ai/mcp2anp/mcp  \
+     --header "X-API-Key: YOUR_API_KEY"
+   ```
+
+  > API Key 生成步骤
+  >1. 访问 [DID-HOST](https://didhost.cc) 并登录账户。
+  >2. 新建 DID Card，在创建流程中勾选“生成 API Key”。
+    > _注:_ 将生成的私钥与 API Key 安全保存；它们仅显示一次，丢失后无法恢复。
+
+   可选：校验 API Key 是否有效（需 `jq`）：
+
+   ```bash
+   curl -sS -H "X-API-Key: YOUR_API_KEY" \
+     "https://didhost.cc/api/v1/mcp-sk-api-keys/verify" | jq .
+   ```
+
+### 2. **自托管远程 HTTP 服务（推荐用于服务端/多人共享）**
+
+- 先安装依赖：
 
    ```bash
    git clone git@github.com:agent-network-protocol/mcp2anp.git
@@ -79,45 +89,47 @@ flowchart LR
    uv sync
    ```
 
-2. **启动本地 stdio 模式**
-
-   ```bash
-   export ANP_DID_DOCUMENT_PATH="docs/did_public/public-did-doc.json"
-   export ANP_DID_PRIVATE_KEY_PATH="docs/did_public/public-private-key.pem"
-   uv run python -m mcp2anp.server --log-level INFO
-   ```
-
-   在 Claude Desktop 中添加（需在仓库根目录执行）：
-
-   ```bash
-   claude mcp add mcp2anp \
-     --env ANP_DID_DOCUMENT_PATH="$PWD/docs/did_public/public-did-doc.json" \
-     --env ANP_DID_PRIVATE_KEY_PATH="$PWD/docs/did_public/public-private-key.pem" \
-     -- uv run python -m mcp2anp.server
-   ```
-
-3. **启动远程 HTTP 模式**
+- 启动服务：
 
    ```bash
    uv run python -m mcp2anp.server_remote --host 0.0.0.0 --port 9880
    ```
 
-   在客户端注册：
+-  在 Claude 中以 HTTP 方式注册（将地址替换为你的部署域名或 IP）：
 
    ```bash
-   claude mcp add --transport http mcp2anp-remote https://your-host/mcp \
+   claude mcp add --transport http mcp2anp-remote http://localhost:9880/mcp \
      --header "X-API-Key: YOUR_API_KEY"
    ```
 
-   校验 API Key（需 `jq`）：
+### 3. **本地 stdio 模式（用于桌面/单机调试）**
+
+   确保已完成上文“安装依赖”：
+
+   >1. [DID-HOST](https://didhost.cc) 来创建一个新的 DID。
+   >2. 创建成功后，下载生成的压缩包。
+   >3. 解压该压缩包（例如，解压到项目下的 docs/did_public/ 目录），您将得到 public-did-doc.json（DID 文档）和 public-private-key.pem（私钥）两个文件。
+
+- 直接添加到环境变量
+
+  ```bash
+  # 设置 DID 文件的路径
+  export ANP_DID_DOCUMENT_PATH="docs/did_public/public-did-doc.json"
+  export ANP_DID_PRIVATE_KEY_PATH="docs/did_public/public-private-key.pem"
+
+  # 使用 uv 启动服务
+  uv run python -m mcp2anp.server --log-level INFO
+  ```
+
+- 在 Claude 中添加（需在仓库根目录执行）：
 
    ```bash
-   curl -sS -H "X-API-Key: YOUR_API_KEY" \
-     "https://didhost.cc/api/v1/mcp-sk-api-keys/verify" | jq .
+   claude mcp add mcp2anp \
+     --env ANP_DID_DOCUMENT_PATH="$PWD/docs/did_public/public-did-doc.json" \
+     --env ANP_DID_PRIVATE_KEY_PATH="$PWD/docs/did_public/public
    ```
 
-
-4. **运行官方 Demo**
+### 4. **运行官方 Demo**
 
    ```bash
    uv run python examples/mcp_client_demo.py
