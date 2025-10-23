@@ -107,6 +107,9 @@ class ANPHandler:
                     },
                 }
 
+            # 构建工具名称（ANPCrawler 需要这种格式）
+            tool_name = f"{request.method}"
+
             # 调用工具
             if request.params is None:
                 tool_params = {}
@@ -118,7 +121,10 @@ class ANPHandler:
             else:
                 tool_params = {"value": request.params}
 
-            result = await self.anp_crawler.execute_json_rpc(request.endpoint, request.method, tool_params)
+            # 因为execute_json_rpc在调用的时候，会有一定的概率失败。主要是Endpoint错误，所以这里暂时用execute_tool_call来调用。
+            # execute_json_rpc的通用性最好，后面在根据模型能力调整
+            # result = await self.anp_crawler.execute_json_rpc(request.endpoint, request.method, tool_params)
+            result = await self.anp_crawler.execute_tool_call(tool_name, tool_params)
 
             logger.info("OpenRPC method invoked successfully", method=request.method)
             return {
