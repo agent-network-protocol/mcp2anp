@@ -121,12 +121,16 @@ flowchart LR
   uv run python -m mcp2anp.server --log-level INFO
   ```
 
-- 在 Claude 中添加（需在仓库根目录执行）：
+- 在 Claude 中添加：
 
    ```bash
-   claude mcp add mcp2anp \
-     --env ANP_DID_DOCUMENT_PATH="$PWD/docs/did_public/public-did-doc.json" \
-     --env ANP_DID_PRIVATE_KEY_PATH="$PWD/docs/did_public/public
+    # 将仓库根目录赋值给变量（替换为你的实际路径）
+    MCP2ANP_DIR=/Users/cs/work/mcp2anp
+    
+    claude mcp add mcp2anp \
+      --env ANP_DID_DOCUMENT_PATH=$MCP2ANP_DIR/docs/did_public/public-did-doc.json \
+      --env ANP_DID_PRIVATE_KEY_PATH=$MCP2ANP_DIR/docs/did_public/public-private-key.pem \
+      -- uv run --directory $MCP2ANP_DIR python -m mcp2anp.server
    ```
 
 ### 4. **运行官方 Demo**
