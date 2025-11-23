@@ -234,7 +234,7 @@ async def anp_fetchDoc(ctx: Context, url: str) -> str:
 
     ANP生态的入口URL：https://agent-navigation.com/ad.json
     你可以从这个URL开始，逐步跟进并调用工具，访问ANP生态的资源和能力。
-
+    当遇到 interfaces.url 是一个以 .json 结尾的 URL 时，你应该使用 anp.fetchDoc 继续拉取该json文档，才能获得正确的 endPoint。
 
     Args:
         ctx: FastMCP 上下文对象

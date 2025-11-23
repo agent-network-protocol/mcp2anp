@@ -70,11 +70,13 @@ class ANPHandler:
             except json.JSONDecodeError:
                 pass  # 不是 JSON 内容，跳过
 
-            logger.info("Document fetched successfully", url=request.url, links_count=len(links))
+            logger.info("Document fetched successfully",
+                        url=request.url, links_count=len(links))
             return result
 
         except Exception as e:
-            logger.error("Failed to fetch document", url=arguments.get("url"), error=str(e))
+            logger.error("Failed to fetch document",
+                         url=arguments.get("url"), error=str(e))
             return {
                 "ok": False,
                 "error": {
@@ -98,7 +100,8 @@ class ANPHandler:
 
             # 检查 ANPCrawler 是否已初始化
             if self.anp_crawler is None:
-                logger.error("ANPCrawler not initialized. Please check DID credentials.")
+                logger.error(
+                    "ANPCrawler not initialized. Please check DID credentials.")
                 return {
                     "ok": False,
                     "error": {
@@ -123,10 +126,13 @@ class ANPHandler:
 
             # 因为execute_json_rpc在调用的时候，会有一定的概率失败。主要是Endpoint错误，所以这里暂时用execute_tool_call来调用。
             # execute_json_rpc的通用性最好，后面在根据模型能力调整
-            # result = await self.anp_crawler.execute_json_rpc(request.endpoint, request.method, tool_params)
-            result = await self.anp_crawler.execute_tool_call(tool_name, tool_params)
+            result = await self.anp_crawler.execute_json_rpc(request.endpoint, request.method, tool_params)
+            # result = await self.anp_crawler.execute_tool_call(tool_name, tool_params)
 
-            logger.info("OpenRPC method invoked successfully", method=request.method)
+            logger.info("OpenRPC method invoked successfully",
+                        method=request.method)
+            logger.info(
+                f"result:{json.dumps(result, indent=2, ensure_ascii=False)}")
             return {
                 "ok": True,
                 "result": result,
@@ -164,8 +170,10 @@ def initialize_anp_crawler() -> ANPCrawler | None:
     # 如果环境变量未设置，使用默认的公共 DID 凭证
     if not did_document_path or not did_private_key_path:
         project_root = Path(__file__).parent.parent.parent
-        did_document_path = str(project_root / "docs" / "did_public" / "public-did-doc.json")
-        did_private_key_path = str(project_root / "docs" / "did_public" / "public-private-key.pem")
+        did_document_path = str(
+            project_root / "docs" / "did_public" / "public-did-doc.json")
+        did_private_key_path = str(
+            project_root / "docs" / "did_public" / "public-private-key.pem")
         logger.info(
             "Using default DID credentials",
             did_doc=did_document_path,

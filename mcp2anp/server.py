@@ -109,6 +109,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
             raise ValueError(f"Unknown tool: {name}")
 
         # 将结果转换为字符串格式返回
+        logger.debug(f"result length: {len(json.dumps(result, indent=2, ensure_ascii=False))}")
         return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
 
     except Exception as e:
