@@ -48,6 +48,7 @@ async def list_tools() -> list[Tool]:
 
                 "ANP生态的入口URL：https://agent-navigation.com/ad.json"
                 "你可以从这个URL开始，逐步跟进并调用工具，访问ANP生态的资源和能力。"
+                "当遇到 interfaces.url 是一个以 .json 结尾的 URL 时，你应该使用 anp.fetchDoc 继续拉取该json文档，才能获得正确的 endPoint。"
             ),
             inputSchema={
                 "type": "object",
@@ -109,6 +110,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> Sequence[TextConten
             raise ValueError(f"Unknown tool: {name}")
 
         # 将结果转换为字符串格式返回
+        logger.info(f"result length: {len(json.dumps(result, indent=2, ensure_ascii=False))}")
         return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
 
     except Exception as e:
