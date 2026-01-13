@@ -4,11 +4,11 @@
 
 ## 为什么需要 MCP2ANP？
 
-在 AI 智能体快速发展的今天，我们面临一个有趣的悖论：一方面，像 Claude、Cursor 这样的 AI 助手越来越强大，它们通过 MCP（Model Context Protocol）获得了调用本地工具的能力；另一方面，分散在互联网各处的 AI 智能体服务却缺乏统一的发现和调用标准。
+在 AI 智能体快速发展的今天，我们面临一个有趣的悖论：一方面，像 Claude、Cursor 这样的 AI 助手越来越强大，它们通过 MCP（Model Context Protocol）获得了调用工具的能力；另一方面，分散在互联网各处的 AI 智能体服务却缺乏统一的发现和调用标准。
 
 **ANP（Agent Network Protocol）** 正是为解决这个问题而生的开放协议，它为 AI 智能体提供了一套标准化的发现、描述和交互规范。但问题来了：如何让已经支持 MCP 的客户端（如 Claude Desktop、Cursor IDE）无缝接入 ANP 网络呢？
 
-这就是 **MCP2ANP** 的使命——作为一座桥梁，让支持 MCP 的客户端像调用本地工具一样使用 ANP 智能体。
+这就是 **MCP2ANP** 的使命——作为一座桥梁，让支持 MCP 的客户端像调用工具一样使用 ANP 智能体。
 
 ## 核心设计思路
 
