@@ -12,6 +12,17 @@
 ### `simple_example.py`
 简化的使用示例，展示最基本的客户端用法。
 
+### `mcp_ap2_client_demo.py`
+AP2 支付流程演示脚本，展示如何使用 MCP 客户端完成完整的 AP2 支付流程：
+- 创建购物车授权请求
+- 发送支付授权完成支付
+
+### `merchant_server.py`
+AP2 商户服务器示例，提供购物车授权和支付授权处理接口。
+
+### `shopper_client.py`
+AP2 购物者客户端示例（已整合到 `mcp2anp.ap2_server` 中）。
+
 ## 运行演示
 
 ### 前置条件
@@ -31,6 +42,22 @@ uv run python mcp_client_demo.py
 cd examples
 uv run python simple_example.py
 ```
+
+### 运行 AP2 支付流程演示
+
+1. **启动商户服务器**（在一个终端中）：
+```bash
+cd examples
+uv run python merchant_server.py
+```
+
+2. **运行 AP2 客户端演示**（在另一个终端中）：
+```bash
+cd examples
+uv run python mcp_ap2_client_demo.py
+```
+
+AP2 客户端会自动连接到 `mcp2anp.ap2_server` 并完成完整的支付流程。
 
 ## 使用方法（基于 MCP 官方 SDK）
 
@@ -126,6 +153,27 @@ asyncio.run(my_example())
 - `endpoint`: OpenRPC 端点 URL
 - `method`: RPC 方法名
 - `params`: RPC 参数
+
+## AP2 支付流程工具
+
+使用 `mcp2anp.ap2_server` 时，以下工具可用：
+
+### `ap2.createCartMandate`
+创建购物车授权请求并发送给商户服务器
+- `merchant_url`: 商户服务器URL
+- `merchant_did`: 商户DID
+- `cart_mandate_id`: 购物车授权ID（唯一标识）
+- `items`: 商品列表（包含 id, quantity, price, currency, label, options, remark）
+- `shipping_address`: 配送地址（包含 recipient_name, phone, region, city, address_line, postal_code）
+- `remark`: 备注信息（可选）
+
+### `ap2.sendPaymentMandate`
+构建并发送支付授权给商户服务器
+- `merchant_url`: 商户服务器URL
+- `merchant_did`: 商户DID
+- `cart_mandate_id`: 之前创建的购物车授权ID
+- `payment_mandate_id`: 支付授权ID（唯一标识）
+- `refund_period`: 退款期限（天，默认30）
 
 ## 注意事项
 
