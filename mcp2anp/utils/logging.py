@@ -2,7 +2,6 @@
 
 import logging
 import sys
-import os
 from pathlib import Path
 from typing import Any
 
