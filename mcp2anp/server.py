@@ -81,7 +81,7 @@ async def list_tools() -> list[Tool]:
                         "description": "要调用的 RPC 方法名称",
                     },
                     "params": {
-                        "description": "传递给方法的参数",
+                        "description": "传递给方法的参数（dict 或 list）",
                     },
                     "id": {
                         "type": "string",

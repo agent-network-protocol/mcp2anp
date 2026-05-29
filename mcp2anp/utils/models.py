@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+import structlog
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+logger = structlog.get_logger(__name__)
 
 
 class ConfigMixin:
@@ -44,3 +48,30 @@ class InvokeOpenRPCRequest(ConfigMixin, BaseModel):
         description="方法参数",
     )
     id: str | None = Field(None, description="请求 ID")
+
+    @field_validator("params", mode="before")
+    @classmethod
+    def _parse_params(cls, v: Any) -> Any:
+        """Auto-parse params when LLM serializes it as JSON string.
+
+        Claude Desktop and other MCP clients sometimes pass params as a
+        JSON-encoded string instead of a native object/array. This
+        validator detects and repairs that before Pydantic validation.
+        """
+        if isinstance(v, str):
+            if not v.strip():
+                return None
+            try:
+                parsed = json.loads(v)
+                logger.warning(
+                    "params was passed as JSON string instead of native object — auto-repaired",
+                    original=v,
+                )
+                return parsed
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "params was passed as string but is not valid JSON — leaving as-is",
+                    value=v,
+                )
+                return v
+        return v
