@@ -32,8 +32,8 @@ def setup_logging(level: str = "INFO") -> None:
     )
     file_handler.setFormatter(file_formatter)
 
-    # Create console handler for stdout
-    console_handler = logging.StreamHandler(sys.stdout)
+    # Create console handler for stderr (not stdout — stdout is reserved for MCP protocol)
+    console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setLevel(getattr(logging, level.upper()))
     console_formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
